@@ -4,6 +4,7 @@ import SwiftUI
 struct CanvasView: View {
     @Bindable var project: Project
     let blurPoster: NSImage?
+    let onOpenRecording: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
@@ -31,7 +32,7 @@ struct CanvasView: View {
                         .padding(14)
                         .frame(width: canvasSize.width, height: canvasSize.height, alignment: .bottom)
                 } else {
-                    DropPromptView()
+                    DropPromptView(onOpenRecording: onOpenRecording)
                         .frame(width: canvasSize.width, height: canvasSize.height)
                 }
             }
@@ -109,19 +110,31 @@ private func formatPlaybackTimestamp(_ seconds: Double) -> String {
 }
 
 private struct DropPromptView: View {
+    let onOpenRecording: () -> Void
+
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             Image(systemName: "iphone.gen3")
                 .font(.system(size: 56, weight: .light))
                 .foregroundStyle(.white.opacity(0.85))
             Text("Drop an iPhone screen recording here")
                 .font(.title3)
                 .foregroundStyle(.white.opacity(0.85))
-            Text("or use Open… in the sidebar")
+            Button {
+                onOpenRecording()
+            } label: {
+                Label("Open from Finder", systemImage: "folder")
+                    .font(.callout.weight(.semibold))
+                    .frame(minWidth: 170)
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+
+            Text("or drag a video onto the canvas")
                 .font(.callout)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(0.62))
         }
-        .padding()
+        .padding(22)
         .background(Color.black.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }

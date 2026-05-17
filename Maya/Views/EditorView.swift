@@ -15,7 +15,7 @@ struct EditorView: View {
         } detail: {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    CanvasView(project: project, blurPoster: blurPoster)
+                    CanvasView(project: project, blurPoster: blurPoster, onOpenRecording: openVideoPicker)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .dropDestination(for: URL.self) { urls, _ in
                             guard let url = urls.first else { return false }
@@ -117,6 +117,16 @@ struct EditorView: View {
         } catch {
             if didStart { url.stopAccessingSecurityScopedResource() }
             project.lastExportError = "Could not import video: \(error.localizedDescription)"
+        }
+    }
+
+    private func openVideoPicker() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.movie, .quickTimeMovie, .mpeg4Movie]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            importVideo(from: url)
         }
     }
 
