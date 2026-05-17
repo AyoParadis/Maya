@@ -30,6 +30,26 @@ struct BackgroundPicker: View {
             case .videoBlur: "Blur"
             }
         }
+
+        var symbol: String {
+            switch self {
+            case .none: "square.dashed"
+            case .solid: "circle.fill"
+            case .gradient: "camera.filters"
+            case .image: "photo"
+            case .videoBlur: "drop.degreesign"
+            }
+        }
+
+        var help: String {
+            switch self {
+            case .none: "Export with transparency"
+            case .solid: "Use a solid background color"
+            case .gradient: "Use a gradient background"
+            case .image: "Use a still image background"
+            case .videoBlur: "Blur a frame from the source video"
+            }
+        }
     }
 
     var body: some View {
@@ -37,14 +57,7 @@ struct BackgroundPicker: View {
             Text("Background")
                 .font(.headline)
 
-            Picker("", selection: $selectedKind) {
-                ForEach(Kind.allCases) { k in
-                    Text(k.label).tag(k)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .onChange(of: selectedKind) { _, _ in applySelection() }
+            kindPicker
             .onAppear {
                 syncKindFromProject()
                 seedCustomEditorsFromProject()
@@ -66,6 +79,35 @@ struct BackgroundPicker: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            }
+        }
+    }
+
+    private var kindPicker: some View {
+        let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(Kind.allCases) { kind in
+                Button {
+                    selectedKind = kind
+                    applySelection()
+                } label: {
+                    Label(kind.label, systemImage: kind.symbol)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .foregroundStyle(selectedKind == kind ? Color.white : Color.primary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedKind == kind ? (Color(hex: "#6466FA") ?? .accentColor) : Color.gray.opacity(0.12))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedKind == kind ? Color.white.opacity(0.35) : Color.gray.opacity(0.18), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(kind.help)
             }
         }
     }

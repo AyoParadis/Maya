@@ -16,7 +16,7 @@ final class DeviceFrameCompositionInstruction: AVMutableVideoCompositionInstruct
     nonisolated(unsafe) var animations: [ZoomSegment] = []
     nonisolated(unsafe) var shadow: PhoneShadow = PhoneShadow()
     nonisolated(unsafe) var shadowColor: CIColor = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
-    /// Used when `deviceFrame.kind != .physical` to derive the screen corner
+    /// Used when the frame does not provide fixed screen geometry to derive the screen corner
     /// radius from the user-controlled slider. Normalized to the screen's
     /// short side: 0 = sharp, 0.5 = stadium.
     nonisolated(unsafe) var bareCornerRadius: CGFloat = 0.12
@@ -122,7 +122,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
             switch instruction.deviceFrame.kind {
             case .none, .generic:
                 return sourceSize.width / sourceSize.height
-            case .physical:
+            case .physical, .drawn:
                 return instruction.deviceFrame.frameAspectRatio
             }
         }()
@@ -155,7 +155,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
         )
         let cornerRadius: CGFloat = {
             switch instruction.deviceFrame.kind {
-            case .physical:
+            case .physical, .drawn:
                 return instruction.deviceFrame.screenCornerRadiusNormalized * phoneWidth
             case .none, .generic:
                 return instruction.bareCornerRadius * min(screenRect.width, screenRect.height)
@@ -183,9 +183,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
                 if instruction.deviceFrame.kind == .none {
                     return cornerRadius
                 }
-                // Outer corner radius of an iPhone Pro hull is ~13.5% of width;
-                // good enough across all hardware variants since the shadow is blurred.
-                return phoneWidth * 0.135
+                return phoneWidth * instruction.deviceFrame.outerCornerRadiusFraction
             }()
             let scaledOffsetX = instruction.shadow.offsetX * effectiveScale
             let scaledOffsetY = instruction.shadow.offsetY * effectiveScale

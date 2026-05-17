@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         EditorView()
+            .frame(minWidth: 1120, minHeight: 720)
     }
 }
 
