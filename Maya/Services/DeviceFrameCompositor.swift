@@ -126,10 +126,14 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
                 return instruction.deviceFrame.frameAspectRatio
             }
         }()
-        let naturalPhoneHeight = renderSize.height * instruction.naturalHeightFraction
-        let naturalPhoneWidth = naturalPhoneHeight * effectiveAspect
-        let phoneHeight = naturalPhoneHeight * effectiveScale
-        let phoneWidth = naturalPhoneWidth * effectiveScale
+        let naturalPhoneSize = DeviceFrame.fittedSize(
+            aspectRatio: effectiveAspect,
+            in: renderSize,
+            maxHeightFraction: instruction.naturalHeightFraction,
+            maxWidthFraction: instruction.naturalHeightFraction
+        )
+        let phoneHeight = naturalPhoneSize.height * effectiveScale
+        let phoneWidth = naturalPhoneSize.width * effectiveScale
 
         // SwiftUI offset is in canvas-side fractions of the short side so the drag
         // feel matches across canvas aspects. Mirror that here.
