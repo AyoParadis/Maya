@@ -198,13 +198,20 @@ private struct SegmentBlock: View {
                     if dragSnapshot == nil { dragSnapshot = (segment.startTime, segment.duration) }
                     let dt = (Double(v.translation.width) / Double(trackWidth)) * totalDuration
                     let raw = (dragSnapshot?.start ?? 0) + dt
-                    let snapped = AnimationsTrack.snap(raw, toPlayhead: playheadTime)
                     var s = segment
-                    s.startTime = max(0, min(snapped, max(totalDuration - s.duration, 0)))
+                    s.startTime = max(0, min(raw, max(totalDuration - s.duration, 0)))
                     onChange(s)
                     tooltipText = "\(formatTimestamp(s.startTime)) → \(formatTimestamp(s.endTime))"
                 }
-                .onEnded { _ in
+                .onEnded { v in
+                    if let snap = dragSnapshot {
+                        let dt = (Double(v.translation.width) / Double(trackWidth)) * totalDuration
+                        let raw = snap.start + dt
+                        let snapped = AnimationsTrack.snap(raw, toPlayhead: playheadTime)
+                        var s = segment
+                        s.startTime = max(0, min(snapped, max(totalDuration - s.duration, 0)))
+                        onChange(s)
+                    }
                     dragSnapshot = nil
                     tooltipText = nil
                 }
@@ -241,8 +248,7 @@ private struct SegmentBlock: View {
         var s = segment
         switch edge {
         case .leading:
-            let proposedStart = max(0, snap.start + dt)
-            let snappedStart = AnimationsTrack.snap(proposedStart, toPlayhead: playheadTime)
+            let snappedStart = max(0, snap.start + dt)
             let endTime = snap.start + snap.duration
             let newDuration = max(ZoomSegment.durationRange.lowerBound, endTime - snappedStart)
             s.startTime = snappedStart
@@ -252,7 +258,7 @@ private struct SegmentBlock: View {
             let maxDur = min(totalDuration - s.startTime, ZoomSegment.durationRange.upperBound)
             let proposedDuration = max(ZoomSegment.durationRange.lowerBound,
                                        min(snap.duration + dt, maxDur))
-            let endTime = AnimationsTrack.snap(s.startTime + proposedDuration, toPlayhead: playheadTime)
+            let endTime = s.startTime + proposedDuration
             s.duration = max(ZoomSegment.durationRange.lowerBound, endTime - s.startTime)
             tooltipText = "\(formatTimestamp(s.endTime)) · \(String(format: "%.2fs", s.duration))"
         }
