@@ -15,9 +15,14 @@
 ## ✨ Features
 
 ### 🎬 Device framing
-- Drop an iPhone screen recording — Maya wraps it in a clean **iPhone 15 Pro** mockup with the correct screen cutout, corner radius, and Dynamic Island.
-- The framed phone lives inside a configurable canvas (1:1, 9:16, 16:9, 4:5, 3:4) so you can target Reels, Shorts, TikTok, YouTube, X, or in-app overlays from a single source.
+- Drop an iPhone screen recording — Maya wraps it in a clean device mockup with the correct screen cutout and corner radius.
+- **Multiple devices**: iPhone 17 Pro, iPhone 16 Pro, iPhone 15 Pro, each with their official titanium color variants (Cosmic Orange, Deep Blue, Silver, Natural / Black / White / Desert Titanium…). Switch model and color from the sidebar in one click.
+- **Generic** mode: a brand-agnostic frame with user-defined **bezel width** and **bezel color**.
+- **No frame** mode: ship the bare screen recording with rounded corners only.
+- A **corner radius slider** appears in Generic / No-frame modes so you can dial from sharp to stadium.
+- The framed phone lives inside a configurable canvas — **1:1**, **9:16**, **4:5**, **4:3 landscape**, **16:9 widescreen** — so you can target Reels, Shorts, TikTok, YouTube, X, or in-app overlays from a single source.
 - Manually scale and reposition the phone on the canvas via slider + drag.
+- Optional **drop shadow** under the phone with controls for color, blur, X/Y offset, and opacity.
 
 ### 🎨 Backgrounds
 A single picker, five modes:
@@ -35,6 +40,7 @@ Like shots.so for Mac:
 - Drag the block to move it; drag the edges to resize. Everything snaps to **0.25 s** intervals and to the **playhead** when nearby.
 - Live tooltips show timestamps while dragging.
 - The playhead is scrubbable.
+- Selecting a zoom event opens an inline **right-side editor panel** so every slider tweak updates the canvas in real time — no modal, no lost context.
 
 ### 🌀 Six animation curves
 | Curve | Feel |
@@ -97,17 +103,16 @@ This project is in active development and **contributions are very welcome**. Wh
 ### High-impact contribution areas
 
 #### 📱 More device frames
-Right now only **iPhone 15 Pro** is supported. We'd love PRs that add:
-- iPhone 16 / 16 Pro / 16 Pro Max
-- iPhone 15 / 15 Plus
+Maya currently ships **iPhone 17 Pro**, **16 Pro**, and **15 Pro** (each with multiple color variants), plus a configurable Generic frame and a No-frame mode. PRs that add more devices are very welcome:
+- iPhone 16 / 16 Plus, iPhone 15 / 15 Plus
 - iPhone SE
 - iPad mini / iPad Pro
 - Older models (iPhone 14, 13, 12 family)
 - Android devices (Pixel, Galaxy)
 
 To add a frame:
-1. Drop a transparent-screen PNG into `Maya/Assets.xcassets/` (the imageset).
-2. Add a `static let` entry to `Maya/Models/DeviceFrame.swift` with the screen rect (normalized to the PNG size) and the corner radius.
+1. Drop transparent-screen PNG(s) into `Maya/Assets.xcassets/iphone frames/` — one imageset per color variant.
+2. Register the model in `Maya/Models/DeviceFrame.swift` (`DeviceModel`) with the frame aspect, normalized screen rect, corner radius, and a `DeviceColor` per variant. Append it to `DeviceModel.all`.
 3. Submit a PR with a screenshot of the result. That's it.
 
 #### 🎯 Feature ideas (good first issues)
@@ -150,7 +155,13 @@ For larger features, **open an issue first** so we can align on the approach bef
 Maya/
 ├── MayaApp.swift                 App entry
 ├── ContentView.swift             Root → EditorView
-├── Models/                       State + value types (Project, ZoomSegment, DeviceFrame, …)
+├── Models/                       State + value types
+│   ├── Project                   Root @Observable state (video, canvas, devices, shadow, animations…)
+│   ├── DeviceFrame               DeviceModel + DeviceColor catalog (iPhone Pro family, Generic, None)
+│   ├── CanvasAspectRatio         1:1, 9:16, 4:5, 4:3, 16:9 — pixel sizes + chip metadata
+│   ├── PhoneShadow               Drop-shadow parameters (color, blur, offsets, opacity)
+│   ├── BackgroundOption          Solid / gradient / image / video-blur / transparent
+│   └── ZoomSegment               Per-segment zoom animation spec
 ├── Services/                     AVFoundation + Core Image plumbing
 │   ├── DeviceFrameCompositor     Custom AVVideoCompositing (per-frame compositing)
 │   ├── ExportService             Actor that runs both .mp4 and .mov exports
@@ -159,11 +170,11 @@ Maya/
 │   └── VideoThumbnailGenerator   Async timeline thumbnails
 ├── Views/                        SwiftUI views
 │   ├── EditorView                Top-level layout (sidebar / canvas / timeline / editor panel)
-│   ├── CanvasView                1:1 (or other ratio) canvas with framed phone + background
-│   ├── FramedDeviceView          Composite of video + frame overlay
+│   ├── CanvasView                Configurable-ratio canvas with framed phone + background
+│   ├── FramedDeviceView          Composite of video + frame overlay + shadow
 │   ├── BackgroundPicker          Mode tabs + per-mode controls
-│   ├── SettingsSidebar           Left sidebar (recording, canvas, transform, export)
-│   ├── AnimationEditorSheet      Right panel for editing a selected zoom event
+│   ├── SettingsSidebar           Left sidebar (recording, canvas, device, transform, background, shadow, export)
+│   ├── AnimationEditorSheet      Right panel for editing a selected zoom event (live preview)
 │   └── Timeline/                 Ruler, video strip, animations track, draggable playhead
 └── Assets.xcassets/              iPhone frame PNGs + app icon
 ```
@@ -181,7 +192,7 @@ You can fork, use Maya in personal or commercial projects, and ship derived work
 ## 🙏 Acknowledgements
 
 - The app's brand color `#6466FA` borrows from the Tailwind/Indigo family.
-- iPhone 15 Pro frame PNG generated by the project owner.
+- iPhone 15 / 16 / 17 Pro frame PNGs generated by the project owner.
 - Built with ❤️ on macOS Tahoe.
 
 If Maya helps you ship a video, tag [@ronaldo-avalos](https://github.com/ronaldo-avalos) — we'd love to see it.

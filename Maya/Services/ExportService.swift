@@ -16,9 +16,15 @@ actor ExportService {
         let background: BackgroundOption
         let blurPosterCG: CGImage?
         let backgroundImageCG: CGImage?
-        let frameOverlayCG: CGImage
+        /// nil when `deviceFrame.kind == .none` — the compositor skips the overlay step.
+        let frameOverlayCG: CGImage?
         let animations: [ZoomSegment]
         let renderSize: CGSize
+        let bareCornerRadius: CGFloat
+        let bareBezelWidth: CGFloat
+        let bareBezelColor: CIColor
+        let shadow: PhoneShadow
+        let shadowColor: CIColor
     }
 
     func exportWithBackground(
@@ -83,7 +89,7 @@ actor ExportService {
         let fps = frameDuration == .invalid || frameDuration.seconds <= 0 ? CMTime(value: 1, timescale: 60) : frameDuration
 
         let backgroundImage = try buildBackgroundCIImage(snapshot: snapshot, size: renderSize)
-        let frameOverlay = CIImage(cgImage: snapshot.frameOverlayCG)
+        let frameOverlay = snapshot.frameOverlayCG.map { CIImage(cgImage: $0) }
 
         let instruction = DeviceFrameCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
@@ -95,6 +101,11 @@ actor ExportService {
         instruction.frameOverlay = frameOverlay
         instruction.renderTransparent = false
         instruction.animations = snapshot.animations
+        instruction.bareCornerRadius = snapshot.bareCornerRadius
+        instruction.bareBezelWidth = snapshot.bareBezelWidth
+        instruction.bareBezelColor = snapshot.bareBezelColor
+        instruction.shadow = snapshot.shadow
+        instruction.shadowColor = snapshot.shadowColor
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.frameDuration = fps
@@ -143,7 +154,7 @@ actor ExportService {
             : rawFrameDuration
 
         let renderSize = snapshot.renderSize
-        let frameOverlay = CIImage(cgImage: snapshot.frameOverlayCG)
+        let frameOverlay = snapshot.frameOverlayCG.map { CIImage(cgImage: $0) }
 
         let instruction = DeviceFrameCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
@@ -155,6 +166,11 @@ actor ExportService {
         instruction.frameOverlay = frameOverlay
         instruction.renderTransparent = true
         instruction.animations = snapshot.animations
+        instruction.bareCornerRadius = snapshot.bareCornerRadius
+        instruction.bareBezelWidth = snapshot.bareBezelWidth
+        instruction.bareBezelColor = snapshot.bareBezelColor
+        instruction.shadow = snapshot.shadow
+        instruction.shadowColor = snapshot.shadowColor
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.frameDuration = frameDuration
@@ -379,8 +395,14 @@ actor ExportService {
     @MainActor
     static func snapshot(from project: Project) throws -> Snapshot {
         guard let url = project.videoURL else { throw ExportError.noSourceVideo }
-        guard let overlay = FrameOverlayProvider.cgImage(for: project.deviceFrame) else {
-            throw ExportError.missingFrameOverlay
+        let overlay: CGImage?
+        if project.deviceFrame.kind == .none {
+            overlay = nil
+        } else {
+            guard let img = FrameOverlayProvider.cgImage(for: project.deviceFrame) else {
+                throw ExportError.missingFrameOverlay
+            }
+            overlay = img
         }
         var backgroundCG: CGImage?
         if case .image(let imageURL) = project.background {
@@ -405,7 +427,12 @@ actor ExportService {
             backgroundImageCG: backgroundCG,
             frameOverlayCG: overlay,
             animations: project.animations,
-            renderSize: project.canvasAspect.renderSize
+            renderSize: project.canvasAspect.renderSize,
+            bareCornerRadius: project.bareCornerRadius,
+            bareBezelWidth: project.bareBezelWidth,
+            bareBezelColor: (Color(hex: project.bareBezelHex) ?? .black).ciColor,
+            shadow: project.shadow,
+            shadowColor: (Color(hex: project.shadow.colorHex) ?? .black).ciColor
         )
     }
 }

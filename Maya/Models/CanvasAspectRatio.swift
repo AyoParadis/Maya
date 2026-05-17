@@ -6,6 +6,7 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
     case vertical9x16
     case vertical4x5
     case landscape4x3
+    case landscape16x9
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .vertical9x16:  return 9.0 / 16.0
         case .vertical4x5:   return 4.0 / 5.0
         case .landscape4x3:  return 4.0 / 3.0
+        case .landscape16x9: return 16.0 / 9.0
         }
     }
 
@@ -25,6 +27,7 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .vertical9x16:  return "Reels / Story"
         case .vertical4x5:   return "Portrait"
         case .landscape4x3:  return "Landscape"
+        case .landscape16x9: return "YouTube / Widescreen"
         }
     }
 
@@ -34,17 +37,20 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .vertical9x16:  return "9:16"
         case .vertical4x5:   return "4:5"
         case .landscape4x3:  return "4:3"
+        case .landscape16x9: return "16:9"
         }
     }
 
-    /// Pixel dimensions used by the export pipeline. Sized to keep the short
-    /// side at 1080 for Reels/Shorts parity, except 4:3 which keeps 1080 tall.
+    /// Pixel dimensions used by the export pipeline. Short side stays at 1080
+    /// for Reels/Shorts parity; landscape variants keep 1080 tall so HD
+    /// (1920×1080) is the default for 16:9.
     var renderSize: CGSize {
         switch self {
         case .square:        return CGSize(width: 1080, height: 1080)
         case .vertical9x16:  return CGSize(width: 1080, height: 1920)
         case .vertical4x5:   return CGSize(width: 1080, height: 1350)
         case .landscape4x3:  return CGSize(width: 1440, height: 1080)
+        case .landscape16x9: return CGSize(width: 1920, height: 1080)
         }
     }
 
@@ -55,6 +61,7 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .vertical9x16:  return "rectangle.portrait"
         case .vertical4x5:   return "rectangle.portrait"
         case .landscape4x3:  return "rectangle"
+        case .landscape16x9: return "rectangle"
         }
     }
 }

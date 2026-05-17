@@ -14,6 +14,16 @@ final class DeviceFrameCompositionInstruction: AVMutableVideoCompositionInstruct
     nonisolated(unsafe) var frameOverlay: CIImage?
     nonisolated(unsafe) var naturalHeightFraction: CGFloat = 0.9
     nonisolated(unsafe) var animations: [ZoomSegment] = []
+    nonisolated(unsafe) var shadow: PhoneShadow = PhoneShadow()
+    nonisolated(unsafe) var shadowColor: CIColor = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+    /// Used when `deviceFrame.kind != .physical` to derive the screen corner
+    /// radius from the user-controlled slider. Normalized to the screen's
+    /// short side: 0 = sharp, 0.5 = stadium.
+    nonisolated(unsafe) var bareCornerRadius: CGFloat = 0.12
+    /// Generic bezel stroke width as a fraction of phone width (0 = no bezel).
+    nonisolated(unsafe) var bareBezelWidth: CGFloat = 0.025
+    /// Generic bezel fill color, in CIColor space (pre-converted from hex by the snapshot).
+    nonisolated(unsafe) var bareBezelColor: CIColor = CIColor.black
 
     /// Declares which source tracks the compositor needs. Without this AVFoundation
     /// won't feed any frames into `request.sourceFrame(byTrackID:)` and the export fails
@@ -99,9 +109,25 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
         let effectiveScale = sample.scale
         let effectiveOffset = CGSize(width: sample.offsetX, height: sample.offsetY)
 
-        // Phone bounding box in render coords (CoreImage: origin bottom-left)
+        // Phone bounding box in render coords (CoreImage: origin bottom-left).
+        // In `.none` mode the "phone" is just the bare video, so its aspect is
+        // the source video's aspect rather than the device frame's.
+        let source = CIImage(cvPixelBuffer: sourceBuffer)
+        let sourceSize = source.extent.size
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
+            request.finish(with: CompositorError.invalidSource)
+            return
+        }
+        let effectiveAspect: CGFloat = {
+            switch instruction.deviceFrame.kind {
+            case .none, .generic:
+                return sourceSize.width / sourceSize.height
+            case .physical:
+                return instruction.deviceFrame.frameAspectRatio
+            }
+        }()
         let naturalPhoneHeight = renderSize.height * instruction.naturalHeightFraction
-        let naturalPhoneWidth = naturalPhoneHeight * instruction.deviceFrame.frameAspectRatio
+        let naturalPhoneWidth = naturalPhoneHeight * effectiveAspect
         let phoneHeight = naturalPhoneHeight * effectiveScale
         let phoneWidth = naturalPhoneWidth * effectiveScale
 
@@ -127,7 +153,14 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
             width: screenRectInPhone.width,
             height: screenRectInPhone.height
         )
-        let cornerRadius = instruction.deviceFrame.screenCornerRadiusNormalized * phoneWidth
+        let cornerRadius: CGFloat = {
+            switch instruction.deviceFrame.kind {
+            case .physical:
+                return instruction.deviceFrame.screenCornerRadiusNormalized * phoneWidth
+            case .none, .generic:
+                return instruction.bareCornerRadius * min(screenRect.width, screenRect.height)
+            }
+        }()
 
         // 1. Background
         let background: CIImage
@@ -140,13 +173,59 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
             background = CIImage(color: .black).cropped(to: renderRect)
         }
 
-        // 2. Source video scaled aspect-fill into screenRect
-        let source = CIImage(cvPixelBuffer: sourceBuffer)
-        let sourceSize = source.extent.size
-        guard sourceSize.width > 0, sourceSize.height > 0 else {
-            request.finish(with: CompositorError.invalidSource)
-            return
+        // 1b. Drop shadow under the phone — blurred rounded-rect silhouette of the
+        // phone bounding box, tinted with the user's shadow color and opacity.
+        // Blur, offset and shape all scale with `effectiveScale` so the shadow
+        // grows with the phone, matching SwiftUI's `.shadow` + `.scaleEffect` order.
+        var workingBg = background
+        if instruction.shadow.enabled, instruction.shadow.opacity > 0 {
+            let outerCornerRadius: CGFloat = {
+                if instruction.deviceFrame.kind == .none {
+                    return cornerRadius
+                }
+                // Outer corner radius of an iPhone Pro hull is ~13.5% of width;
+                // good enough across all hardware variants since the shadow is blurred.
+                return phoneWidth * 0.135
+            }()
+            let scaledOffsetX = instruction.shadow.offsetX * effectiveScale
+            let scaledOffsetY = instruction.shadow.offsetY * effectiveScale
+            let scaledBlur = instruction.shadow.radius * effectiveScale
+
+            let phoneRect = CGRect(
+                x: phoneOrigin.x + scaledOffsetX,
+                // SwiftUI offsetY is downward; CoreImage Y is upward.
+                y: phoneOrigin.y - scaledOffsetY,
+                width: phoneWidth,
+                height: phoneHeight
+            )
+
+            let shadowColor = CIColor(
+                red: instruction.shadowColor.red,
+                green: instruction.shadowColor.green,
+                blue: instruction.shadowColor.blue,
+                alpha: CGFloat(instruction.shadow.opacity)
+            )
+
+            let silhouetteGen = CIFilter.roundedRectangleGenerator()
+            silhouetteGen.extent = phoneRect
+            silhouetteGen.radius = Float(outerCornerRadius)
+            silhouetteGen.color = shadowColor
+
+            if var silhouette = silhouetteGen.outputImage?.cropped(to: phoneRect) {
+                if scaledBlur > 0.5 {
+                    // Expand crop so blurred edges aren't clipped before being composited.
+                    let pad = scaledBlur * 3
+                    let blurExtent = phoneRect.insetBy(dx: -pad, dy: -pad)
+                    silhouette = silhouette
+                        .applyingGaussianBlur(sigma: scaledBlur)
+                        .cropped(to: blurExtent)
+                }
+                workingBg = silhouette.composited(over: workingBg).cropped(to: renderRect)
+            }
         }
+
+        // 2. Source video scaled aspect-fill into screenRect (source already
+        // unpacked above for aspect calculation).
         let fillScale = max(screenRect.width / sourceSize.width, screenRect.height / sourceSize.height)
         var video = source.transformed(by: CGAffineTransform(scaleX: fillScale, y: fillScale))
         let videoCenter = CGPoint(x: video.extent.midX, y: video.extent.midY)
@@ -170,8 +249,39 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
             .cropped(to: screenRect)
         let maskedVideo = masked.outputImage ?? video
 
-        // 4. Composite: video over background
-        var result = maskedVideo.composited(over: background)
+        // 4. Composite: video over background (with shadow already baked in)
+        var result = maskedVideo.composited(over: workingBg)
+
+        // 4b. Generic bezel: ring that grows OUTWARD from the screen edge (no
+        // PNG overlay, no notch). Width and color come from the user. Skipped
+        // entirely when the user dialed the width slider to 0.
+        if instruction.deviceFrame.kind == .generic {
+            let bezelW = phoneWidth * instruction.bareBezelWidth
+            if bezelW > 0.5 {
+                let outerRect = screenRect.insetBy(dx: -bezelW, dy: -bezelW)
+                let outerRadius = cornerRadius + bezelW
+
+                let outerFill = CIFilter.roundedRectangleGenerator()
+                outerFill.extent = outerRect
+                outerFill.radius = Float(outerRadius)
+                outerFill.color = instruction.bareBezelColor
+
+                let innerCut = CIFilter.roundedRectangleGenerator()
+                innerCut.extent = screenRect
+                innerCut.radius = Float(cornerRadius)
+                innerCut.color = CIColor.white
+
+                if let outerImage = outerFill.outputImage?.cropped(to: outerRect),
+                   let innerImage = innerCut.outputImage?.cropped(to: screenRect) {
+                    let cut = CIFilter.sourceOutCompositing()
+                    cut.inputImage = outerImage
+                    cut.backgroundImage = innerImage
+                    if let ring = cut.outputImage?.cropped(to: outerRect) {
+                        result = ring.composited(over: result)
+                    }
+                }
+            }
+        }
 
         // 5. Frame overlay (PNG or placeholder), fit into phone bounding box
         if let overlay = instruction.frameOverlay {

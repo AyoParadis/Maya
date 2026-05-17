@@ -21,8 +21,50 @@ final class Project {
     var scale: CGFloat = 0.85
     var offset: CGSize = .zero
     var background: BackgroundOption = .gradient(GradientSpec.presets[0])
-    var deviceFrame: DeviceFrame = .iPhone15Pro
     var canvasAspect: CanvasAspectRatio = .square
+    var shadow: PhoneShadow = PhoneShadow()
+
+    /// Device picker state. We track model + color separately so switching models
+    /// can gracefully fall back to that model's default color.
+    var deviceModelID: String = DeviceModel.iPhone17Pro.id
+    var deviceColorID: String = DeviceModel.iPhone17Pro.defaultColor.id
+
+    /// Corner radius for the bare video, used when the active device is
+    /// `.none` or `.generic`. Normalized to the screen's short side: 0 = sharp,
+    /// 0.5 = fully rounded (stadium / circle).
+    var bareCornerRadius: CGFloat = 0.15
+
+    /// Stroke width of the generic device bezel, normalized to phone width
+    /// (0 → no bezel, 0.1 → fat bezel).
+    var bareBezelWidth: CGFloat = 0.025
+
+    /// Color of the generic device bezel, stored as hex so it survives
+    /// snapshot/export without bridging through NSColor on background queues.
+    var bareBezelHex: String = "#000000"
+
+    var deviceModel: DeviceModel {
+        DeviceModel.model(id: deviceModelID) ?? .iPhone17Pro
+    }
+
+    var deviceColor: DeviceColor {
+        deviceModel.color(id: deviceColorID) ?? deviceModel.defaultColor
+    }
+
+    var deviceFrame: DeviceFrame {
+        deviceModel.frame(for: deviceColor)
+    }
+
+    func selectDeviceModel(_ model: DeviceModel) {
+        deviceModelID = model.id
+        if model.color(id: deviceColorID) == nil {
+            deviceColorID = model.defaultColor.id
+        }
+    }
+
+    func selectDeviceColor(_ color: DeviceColor) {
+        guard deviceModel.color(id: color.id) != nil else { return }
+        deviceColorID = color.id
+    }
 
     var animations: [ZoomSegment] = []
     var selectedAnimationID: ZoomSegment.ID?
