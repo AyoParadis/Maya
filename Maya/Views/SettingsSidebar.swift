@@ -234,31 +234,11 @@ struct SettingsSidebar: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .font(.callout)
-                HStack(spacing: 8) {
-                    Button {
-                        project.togglePlayback()
-                    } label: {
-                        Image(systemName: project.isPlaying ? "pause.fill" : "play.fill")
-                            .frame(width: 16)
-                    }
-                    .help("Play / Pause (Space)")
-
-                    Button {
-                        project.toggleMute()
-                    } label: {
-                        Image(systemName: project.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .frame(width: 16)
-                    }
-                    .help("Mute audio (M)")
-
-                    Spacer()
-
-                    Button {
-                        openVideoPicker()
-                    } label: {
-                        Label("Replace", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .labelStyle(.titleAndIcon)
+                Button {
+                    openVideoPicker()
+                } label: {
+                    Label("Replace recording", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
                 }
             } else {
                 Button {

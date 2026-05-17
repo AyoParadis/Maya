@@ -17,6 +17,11 @@ struct TimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            playbackControls
+
+            Divider()
+                .overlay(Color.white.opacity(0.14))
+
             HStack(alignment: .top, spacing: 12) {
                 rowLabels
                 tracks
@@ -25,6 +30,72 @@ struct TimelineView: View {
             .padding(.vertical, 12)
         }
         .background(Color.black.opacity(0.35))
+    }
+
+    private var playbackControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                project.togglePlayback()
+            } label: {
+                Image(systemName: project.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(Circle().fill(Color.white.opacity(0.16)))
+            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+            .help("Play / Pause (Space)")
+
+            Text("\(formatTimestamp(project.currentSeconds)) / \(formatTimestamp(project.durationSeconds))")
+                .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .frame(width: 86, alignment: .leading)
+
+            Slider(
+                value: Binding(
+                    get: { project.currentSeconds },
+                    set: { project.seek(to: $0) }
+                ),
+                in: 0...max(project.durationSeconds, 0.1)
+            )
+            .controlSize(.small)
+            .frame(minWidth: 160)
+            .help("Scrub the recording")
+
+            Button {
+                project.toggleMute()
+            } label: {
+                Image(systemName: project.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white.opacity(0.9))
+            .help("Mute (M)")
+
+            Spacer(minLength: 12)
+
+            Text("Space")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.62))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 5))
+                .help("Play / Pause shortcut")
+
+            Text("M")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.62))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 5))
+                .help("Mute shortcut")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(minHeight: 52)
     }
 
     private var rowLabels: some View {
