@@ -32,9 +32,12 @@ struct FramedDeviceView: View {
     }
 
     private var phoneSize: CGSize {
-        let h = canvasSize.height * Self.naturalHeightFraction
-        let w = h * effectiveAspectRatio
-        return CGSize(width: w, height: h)
+        DeviceFrame.fittedSize(
+            aspectRatio: effectiveAspectRatio,
+            in: canvasSize,
+            maxHeightFraction: Self.naturalHeightFraction,
+            maxWidthFraction: Self.naturalHeightFraction
+        )
     }
 
     private var screenRect: CGRect {

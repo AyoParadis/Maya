@@ -279,6 +279,28 @@ struct DeviceFrame: Hashable, Identifiable, Sendable {
 
     static let iPhone15Pro = DeviceModel.iPhone15Pro.frame(for: DeviceModel.iPhone15Pro.defaultColor)
 
+    static func fittedSize(
+        aspectRatio: CGFloat,
+        in bounds: CGSize,
+        maxHeightFraction: CGFloat,
+        maxWidthFraction: CGFloat
+    ) -> CGSize {
+        guard aspectRatio.isFinite,
+              aspectRatio > 0,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return .zero
+        }
+
+        let maxHeight = bounds.height * maxHeightFraction
+        let maxWidth = bounds.width * maxWidthFraction
+        let heightLimited = CGSize(width: maxHeight * aspectRatio, height: maxHeight)
+        if heightLimited.width <= maxWidth {
+            return heightLimited
+        }
+        return CGSize(width: maxWidth, height: maxWidth / aspectRatio)
+    }
+
     func screenRect(in frameSize: CGSize) -> CGRect {
         CGRect(
             x: screenRectNormalized.minX * frameSize.width,
