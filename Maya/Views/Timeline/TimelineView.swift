@@ -58,7 +58,7 @@ struct TimelineView: View {
     private var tracks: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let duration = project.durationSeconds
+            let duration = project.timelineDuration
             let totalHeight = rulerHeight + animationsHeight + videoHeight + 8
 
             ZStack(alignment: .topLeading) {
@@ -83,7 +83,7 @@ struct TimelineView: View {
                     }
                 }
 
-                // Draggable playhead with time tooltip
+                // Draggable playhead with time tooltip. Position is in timeline coords.
                 if duration > 0 {
                     let x = CGFloat(project.currentSeconds / duration) * width
                     Playhead(
@@ -240,7 +240,7 @@ private struct TimelineToolbar: View {
     }
 
     private var displayedDuration: Double {
-        project.isTrimmed ? project.trimmedDuration : project.durationSeconds
+        project.timelineDuration
     }
 
     /// Adds a zoom segment at the current playhead. If the playhead is already inside an
@@ -280,10 +280,11 @@ private struct TimelineToolbar: View {
     private var trimBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: "scissors")
-            Text(String(format: "%.2fs trimmed", max(0, project.durationSeconds - project.trimmedDuration)))
+            Text(String(format: "%.2fs trimmed", max(0, project.durationSeconds - project.clipDuration)))
             Button {
                 project.trimStartTime = 0
                 project.trimEndTime = project.durationSeconds
+                project.clipTimelineStart = 0
             } label: {
                 Image(systemName: "xmark.circle.fill")
             }

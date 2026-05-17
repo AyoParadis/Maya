@@ -87,18 +87,25 @@ struct EditorView: View {
 
     private func markTrimIn() {
         guard project.videoURL != nil else { return }
-        project.setTrimStart(project.currentSeconds)
+        // currentSeconds is in timeline coords; convert to source for the trim handle, and
+        // anchor the clip's right edge so the trim doesn't push the rest of the clip around.
+        let newSource = project.timelineToSource(project.currentSeconds)
+        let delta = newSource - project.trimStartTime
+        project.setTrimStart(newSource)
+        project.clipTimelineStart += delta
     }
 
     private func markTrimOut() {
         guard project.videoURL != nil else { return }
-        project.setTrimEnd(project.currentSeconds)
+        let newSource = project.timelineToSource(project.currentSeconds)
+        project.setTrimEnd(newSource)
     }
 
     private func resetTrim() {
         guard project.videoURL != nil else { return }
         project.trimStartTime = 0
         project.trimEndTime = project.durationSeconds
+        project.clipTimelineStart = 0
     }
 
     private func deleteSelectedSegment() {

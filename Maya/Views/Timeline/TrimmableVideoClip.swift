@@ -2,17 +2,14 @@ import SwiftUI
 
 /// Trim + position-aware video clip for the timeline.
 ///
-/// The full timeline width represents the source video duration. The "clip" — thumbnails
-/// + yellow trim chrome — is rendered ONLY in the `[trimStart, trimEnd]` window. Outside
-/// that window the timeline shows empty track background (no dim, no thumbnails) so the
-/// trimmed regions truly disappear.
+/// The clip is a self-contained block on the timeline:
+///   • Position on the timeline → `clipTimelineStart`
+///   • Source IN/OUT inside the file → `trimStartTime` / `trimEndTime`
 ///
-/// Three interactions:
-///   • Left handle  → moves trim-in (the source IN point)
-///   • Right handle → moves trim-out (the source OUT point)
-///   • Body drag    → slides both trim points together, keeping clip duration constant.
-///                    Lets the user drop the clip wherever on the timeline, including the
-///                    very start.
+/// Drag the body to slide the whole clip horizontally (timeline position changes, the
+/// underlying source range doesn't — thumbnails travel with it). Drag the yellow handles
+/// to trim the source range. The left handle slides the clip so its *right* edge stays
+/// anchored, matching NLE expectations.
 struct TrimmableVideoClip: View {
     @Bindable var project: Project
     let height: CGFloat
@@ -20,18 +17,15 @@ struct TrimmableVideoClip: View {
 
     @State private var isHovering: Bool = false
     @State private var activeHandle: TrimEdge?
-    @State private var handleDragSnapshot: (start: Double, end: Double)?
-    @State private var bodyDragSnapshot: (start: Double, end: Double)?
+    @State private var handleDragSnapshot: HandleSnapshot?
+    @State private var bodyDragSnapshot: Double?
     @State private var isDraggingBody: Bool = false
 
-    // Single source of truth for what the cursor should look like. Each hover zone
-    // updates its own bool, then `applyCursor()` reads all of them and sets the
-    // correct NSCursor — avoiding the push/pop stack getting out of sync when overlap-
-    // ping hover regions fire in unpredictable order.
     @State private var isHoveringBody: Bool = false
     @State private var hoveredHandle: TrimEdge?
 
     private enum TrimEdge { case start, end }
+    private struct HandleSnapshot { let trimStart: Double; let trimEnd: Double; let clipTimelineStart: Double }
 
     private let handleWidth: CGFloat = 10
     private let handleHitWidth: CGFloat = 22
@@ -41,7 +35,7 @@ struct TrimmableVideoClip: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let duration = project.durationSeconds
+            let timelineDuration = project.timelineDuration
 
             ZStack(alignment: .topLeading) {
                 // Empty timeline track — shown wherever the clip isn't.
@@ -53,22 +47,22 @@ struct TrimmableVideoClip: View {
                     )
                     .frame(width: width, height: height)
 
-                if duration > 0, project.videoURL != nil {
-                    let startX = CGFloat(project.trimStartTime / duration) * width
-                    let endX = CGFloat(project.trimEndTime / duration) * width
-                    let trimWidth = max(0, endX - startX)
+                if timelineDuration > 0, project.videoURL != nil {
+                    let clipStartX = CGFloat(project.clipTimelineStart / timelineDuration) * width
+                    let clipEndX = CGFloat(project.clipTimelineEnd / timelineDuration) * width
+                    let clipWidth = max(0, clipEndX - clipStartX)
 
-                    clipBlock(width: width, trimWidth: trimWidth, startX: startX, duration: duration)
-                        .frame(width: trimWidth, height: height)
-                        .offset(x: startX)
+                    clipBlock(clipWidth: clipWidth, timelineWidth: width, timelineDuration: timelineDuration)
+                        .frame(width: clipWidth, height: height)
+                        .offset(x: clipStartX)
 
-                    handle(edge: .start, x: startX, fullWidth: width, duration: duration)
-                    handle(edge: .end, x: endX, fullWidth: width, duration: duration)
+                    handle(edge: .start, x: clipStartX, timelineWidth: width, timelineDuration: timelineDuration)
+                    handle(edge: .end, x: clipEndX, timelineWidth: width, timelineDuration: timelineDuration)
 
                     if let edge = activeHandle {
-                        let t = edge == .start ? project.trimStartTime : project.trimEndTime
-                        let x = edge == .start ? startX : endX
-                        TimeTooltip(text: formatTimestamp(t))
+                        let displayTime = edge == .start ? project.clipTimelineStart : project.clipTimelineEnd
+                        let x = edge == .start ? clipStartX : clipEndX
+                        TimeTooltip(text: formatTimestamp(displayTime))
                             .offset(x: x - 28, y: -26)
                             .allowsHitTesting(false)
                     }
@@ -80,21 +74,25 @@ struct TrimmableVideoClip: View {
         .frame(height: height)
     }
 
-    /// The visible clip: full-width thumbnail strip masked to the trim window, with the
-    /// yellow border and the body-drag gesture. We render the full strip and offset it so
-    /// the source position aligns within the clipped frame — this keeps thumbnails at
-    /// their "natural" source positions instead of regenerating thumbnails per trim.
-    private func clipBlock(width: CGFloat, trimWidth: CGFloat, startX: CGFloat, duration: Double) -> some View {
-        ZStack {
+    /// The clip block: thumbnails for the trim range + yellow border + body drag. The thumbnail
+    /// strip is scaled so its `[trimStart, trimEnd]` slice fills the clip's visual frame — so
+    /// when you drag the body, the thumbnails move with the border (not change content).
+    private func clipBlock(clipWidth: CGFloat, timelineWidth: CGFloat, timelineDuration: Double) -> some View {
+        let sourceDuration = max(project.durationSeconds, 0.001)
+        let clipDuration = max(project.clipDuration, 0.001)
+        let virtualStripWidth = clipWidth * (sourceDuration / clipDuration)
+        let stripOffsetX = -CGFloat(project.trimStartTime / sourceDuration) * virtualStripWidth
+
+        return ZStack {
             if let url = project.videoURL {
                 VideoThumbnailStrip(
                     url: url,
                     thumbnailCount: thumbnailCount,
                     height: height
                 )
-                .frame(width: width, height: height)
-                .offset(x: -startX)
-                .frame(width: trimWidth, height: height, alignment: .leading)
+                .frame(width: virtualStripWidth, height: height)
+                .offset(x: stripOffsetX)
+                .frame(width: clipWidth, height: height, alignment: .leading)
                 .clipped()
             }
 
@@ -105,12 +103,12 @@ struct TrimmableVideoClip: View {
                         : trimColor.opacity(isHovering ? 0.9 : 0.55),
                     lineWidth: activeHandle != nil || isDraggingBody ? 3 : 2
                 )
-                .frame(width: trimWidth, height: height)
+                .frame(width: clipWidth, height: height)
                 .animation(.easeOut(duration: 0.15), value: activeHandle)
                 .animation(.easeOut(duration: 0.15), value: isHovering)
                 .animation(.easeOut(duration: 0.15), value: isDraggingBody)
         }
-        .frame(width: trimWidth, height: height)
+        .frame(width: clipWidth, height: height)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -121,22 +119,20 @@ struct TrimmableVideoClip: View {
             DragGesture(minimumDistance: 3, coordinateSpace: .local)
                 .onChanged { v in
                     if bodyDragSnapshot == nil {
-                        bodyDragSnapshot = (project.trimStartTime, project.trimEndTime)
+                        bodyDragSnapshot = project.clipTimelineStart
                     }
                     isDraggingBody = true
                     applyCursor()
-                    guard let snap = bodyDragSnapshot, width > 0, duration > 0 else { return }
-                    let dur = snap.end - snap.start
-                    let dt = (Double(v.translation.width) / Double(width)) * duration
-                    var newStart = snap.start + dt
-                    newStart = max(0, min(newStart, duration - dur))
-                    project.trimStartTime = newStart
-                    project.trimEndTime = newStart + dur
-                    // Keep the playhead inside the moving clip so the canvas keeps making sense.
-                    if project.currentSeconds < project.trimStartTime {
-                        project.seek(to: project.trimStartTime)
-                    } else if project.currentSeconds > project.trimEndTime {
-                        project.seek(to: project.trimEndTime)
+                    guard let snapStart = bodyDragSnapshot,
+                          timelineWidth > 0,
+                          timelineDuration > 0 else { return }
+                    let dt = (Double(v.translation.width) / Double(timelineWidth)) * timelineDuration
+                    let proposed = max(0, snapStart + dt)
+                    project.clipTimelineStart = proposed
+                    if project.currentSeconds < project.clipTimelineStart {
+                        project.seek(to: project.clipTimelineStart)
+                    } else if project.currentSeconds > project.clipTimelineEnd {
+                        project.seek(to: project.clipTimelineEnd)
                     }
                 }
                 .onEnded { _ in
@@ -147,21 +143,7 @@ struct TrimmableVideoClip: View {
         )
     }
 
-    /// Centralized cursor logic — handles always win over the body, dragging body shows
-    /// closed hand, hovering body shows open hand, nothing → arrow.
-    private func applyCursor() {
-        if hoveredHandle != nil {
-            NSCursor.resizeLeftRight.set()
-        } else if isDraggingBody {
-            NSCursor.closedHand.set()
-        } else if isHoveringBody {
-            NSCursor.openHand.set()
-        } else {
-            NSCursor.arrow.set()
-        }
-    }
-
-    private func handle(edge: TrimEdge, x: CGFloat, fullWidth: CGFloat, duration: Double) -> some View {
+    private func handle(edge: TrimEdge, x: CGFloat, timelineWidth: CGFloat, timelineDuration: Double) -> some View {
         let isActive = activeHandle == edge
 
         return ZStack {
@@ -195,29 +177,63 @@ struct TrimmableVideoClip: View {
             DragGesture(minimumDistance: 1, coordinateSpace: .local)
                 .onChanged { v in
                     if handleDragSnapshot == nil {
-                        handleDragSnapshot = (project.trimStartTime, project.trimEndTime)
+                        handleDragSnapshot = HandleSnapshot(
+                            trimStart: project.trimStartTime,
+                            trimEnd: project.trimEndTime,
+                            clipTimelineStart: project.clipTimelineStart
+                        )
                     }
                     activeHandle = edge
-                    let dt = (Double(v.translation.width) / Double(fullWidth)) * duration
+                    guard let snap = handleDragSnapshot,
+                          timelineWidth > 0,
+                          timelineDuration > 0 else { return }
+                    let dt = (Double(v.translation.width) / Double(timelineWidth)) * timelineDuration
                     switch edge {
                     case .start:
-                        let proposed = (handleDragSnapshot?.start ?? 0) + dt
-                        project.setTrimStart(proposed)
-                        if project.currentSeconds < project.trimStartTime {
-                            project.seek(to: project.trimStartTime)
+                        // Move the source IN and slide the clip together so the *right* edge
+                        // stays anchored on the timeline.
+                        let proposedTrim = snap.trimStart + dt
+                        let clampedTrim = max(0, min(proposedTrim, snap.trimEnd - Project.minTrimDuration))
+                        let actualDelta = clampedTrim - snap.trimStart
+                        project.trimStartTime = clampedTrim
+                        project.clipTimelineStart = max(0, snap.clipTimelineStart + actualDelta)
+                        if project.currentSeconds < project.clipTimelineStart {
+                            project.seek(to: project.clipTimelineStart)
                         }
                     case .end:
-                        let proposed = (handleDragSnapshot?.end ?? duration) + dt
-                        project.setTrimEnd(proposed)
-                        if project.currentSeconds > project.trimEndTime {
-                            project.seek(to: project.trimEndTime)
+                        // Move the source OUT. The clip's left edge stays put.
+                        let proposedTrim = snap.trimEnd + dt
+                        let clamped = max(snap.trimStart + Project.minTrimDuration, min(proposedTrim, project.durationSeconds))
+                        project.trimEndTime = clamped
+                        if project.currentSeconds > project.clipTimelineEnd {
+                            project.seek(to: project.clipTimelineEnd)
                         }
                     }
                 }
                 .onEnded { _ in
                     handleDragSnapshot = nil
                     activeHandle = nil
+                    // The trim handle slid to a new x position during the drag, so the
+                    // mouse may no longer be on top of it. Clear the hover state and
+                    // re-derive the cursor; if the pointer is now resting on the body
+                    // (the common case) we'll fall through to `openHand`.
+                    hoveredHandle = nil
+                    applyCursor()
                 }
         )
+    }
+
+    /// Centralized cursor logic — handles always win over the body, dragging body shows
+    /// closed hand, hovering body shows open hand, nothing → arrow.
+    private func applyCursor() {
+        if hoveredHandle != nil {
+            NSCursor.resizeLeftRight.set()
+        } else if isDraggingBody {
+            NSCursor.closedHand.set()
+        } else if isHoveringBody {
+            NSCursor.openHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
     }
 }

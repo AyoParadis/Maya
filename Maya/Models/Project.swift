@@ -69,12 +69,16 @@ final class Project {
     var animations: [ZoomSegment] = []
     var selectedAnimationID: ZoomSegment.ID?
 
-    /// In/out points on the source video. Non-destructive: the underlying file is untouched,
-    /// but playback, the playhead, and export all honor this window. `nil` means
-    /// "not yet initialized" (used before a video has loaded). Once a video loads, these
-    /// are set to `(0, videoDuration)`.
+    /// In/out points on the *source* video. Non-destructive: the underlying file is untouched.
+    /// Together with `clipTimelineStart` they define an "edit": which portion of the source
+    /// to play and where to place it on the project timeline.
     var trimStartTime: Double = 0
     var trimEndTime: Double = 0
+
+    /// Where the trimmed clip sits on the project timeline. This is independent from
+    /// `trimStartTime` — the user can grab the clip and slide it anywhere on the
+    /// timeline without changing which source frames play. NLE-style.
+    var clipTimelineStart: Double = 0
 
     /// Minimum length you can trim a clip down to. Mirrors Apple Photos' behavior.
     static let minTrimDuration: Double = 0.5
@@ -103,15 +107,44 @@ final class Project {
         return (s.isFinite && s > 0) ? s : 0
     }
 
-    /// Effective playback/export window. Returns the full video range until a clip is loaded.
-    var trimmedDuration: Double {
+    /// Length of the clip (after trim) in seconds.
+    var clipDuration: Double {
         max(0, trimEndTime - trimStartTime)
     }
 
-    /// True when the user has trimmed something off either end.
+    /// Backwards-compat alias used by the toolbar and export.
+    var trimmedDuration: Double { clipDuration }
+
+    /// Right edge of the clip on the project timeline.
+    var clipTimelineEnd: Double {
+        clipTimelineStart + clipDuration
+    }
+
+    /// Length of the project timeline shown in the editor. Grows beyond the source duration
+    /// only if the user has dragged the clip past the natural end.
+    var timelineDuration: Double {
+        max(durationSeconds, clipTimelineEnd)
+    }
+
+    /// True when the user has trimmed something off either end or shifted the clip.
     var isTrimmed: Bool {
         guard durationSeconds > 0 else { return false }
-        return trimStartTime > 0.001 || trimEndTime < durationSeconds - 0.001
+        return trimStartTime > 0.001
+            || trimEndTime < durationSeconds - 0.001
+            || clipTimelineStart > 0.001
+    }
+
+    /// Converts a project-timeline second to its source-video second. Outside the clip's
+    /// timeline window the closest source edge is returned so seeks land on a renderable frame.
+    func timelineToSource(_ t: Double) -> Double {
+        if t <= clipTimelineStart { return trimStartTime }
+        if t >= clipTimelineEnd { return trimEndTime }
+        return trimStartTime + (t - clipTimelineStart)
+    }
+
+    /// Inverse of `timelineToSource`.
+    func sourceToTimeline(_ s: Double) -> Double {
+        clipTimelineStart + (s - trimStartTime)
     }
 
     func setTrimStart(_ t: Double) {
@@ -124,24 +157,34 @@ final class Project {
         trimEndTime = max(minEnd, min(t, durationSeconds))
     }
 
-    /// Clamps a time into the trim window, snapping back to `trimStartTime` once we hit the end.
-    func clampedToTrim(_ t: Double) -> Double {
-        guard trimmedDuration > 0 else { return trimStartTime }
-        if t < trimStartTime { return trimStartTime }
-        if t >= trimEndTime { return trimEndTime }
+    /// Clamps a timeline second into the clip's window.
+    func clampedToClip(_ t: Double) -> Double {
+        guard clipDuration > 0 else { return clipTimelineStart }
+        if t < clipTimelineStart { return clipTimelineStart }
+        if t > clipTimelineEnd { return clipTimelineEnd }
         return t
     }
 
-    func segment(containing time: Double) -> ZoomSegment? {
-        animations.first { time >= $0.startTime && time <= $0.endTime }
+    /// Looks up the segment under a *timeline* second. Returns nil if the timeline time
+    /// lies outside the clip window (no source frame is playing there).
+    func segment(containing timelineTime: Double) -> ZoomSegment? {
+        guard timelineTime >= clipTimelineStart, timelineTime <= clipTimelineEnd else { return nil }
+        let s = timelineToSource(timelineTime)
+        return animations.first { s >= $0.startTime && s <= $0.endTime }
     }
 
-    func addZoomSegment(at time: Double) -> ZoomSegment {
+    /// Adds a zoom anchored at the given *timeline* second. Stored internally in source
+    /// coords so the animation stays attached to the same source frame even if the clip
+    /// is later moved or re-trimmed.
+    func addZoomSegment(at timelineTime: Double) -> ZoomSegment {
         let dur = ZoomSegment.defaultDuration
-        let clampedStart = max(0, min(time, max(durationSeconds - dur, 0)))
+        let clipStart = clipTimelineStart
+        let clipEnd = clipTimelineEnd
+        let clampedTimeline = max(clipStart, min(timelineTime, max(clipEnd - dur, clipStart)))
+        let sourceStart = timelineToSource(clampedTimeline)
         var segment = ZoomSegment(
-            startTime: clampedStart,
-            duration: min(dur, max(durationSeconds - clampedStart, 0.4)),
+            startTime: sourceStart,
+            duration: min(dur, max(trimEndTime - sourceStart, 0.4)),
             scale: ZoomSegment.defaultScale,
             focus: .center
         )
@@ -179,10 +222,13 @@ final class Project {
         isMuted.toggle()
     }
 
-    func seek(to seconds: Double) {
+    /// Seek to a project-timeline second. The player itself runs in source coords so we
+    /// translate before issuing the seek.
+    func seek(to timelineSeconds: Double) {
         guard let player else { return }
-        let clamped = clampedToTrim(seconds)
-        let time = CMTime(seconds: clamped, preferredTimescale: 600)
+        let clamped = clampedToClip(timelineSeconds)
+        let source = timelineToSource(clamped)
+        let time = CMTime(seconds: source, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
         currentSeconds = clamped
     }
@@ -227,11 +273,12 @@ final class Project {
         self.videoNaturalSize = naturalSize
         self.videoDuration = duration
         self.player = newPlayer
-        self.currentSeconds = 0
-        // Initialize trim to the full clip on every new video.
+        // Initialize trim to the full clip and place the clip at timeline 0 on every new video.
         let durSeconds = duration.seconds.isFinite ? duration.seconds : 0
         self.trimStartTime = 0
         self.trimEndTime = max(durSeconds, 0)
+        self.clipTimelineStart = 0
+        self.currentSeconds = 0
 
         // Now safe to remove the previous working copy.
         Self.cleanupCachedSource(at: previousURL)
@@ -241,14 +288,14 @@ final class Project {
             queue: .main
         ) { [weak self] time in
             guard let self else { return }
-            let t = time.seconds
+            let sourceTime = time.seconds
             // If the player crosses the trim-out point while playing, snap back to trim-in.
-            if self.trimmedDuration > 0, t >= self.trimEndTime - 0.01 {
+            if self.clipDuration > 0, sourceTime >= self.trimEndTime - 0.01 {
                 let target = CMTime(seconds: self.trimStartTime, preferredTimescale: 600)
                 self.player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-                self.currentSeconds = self.trimStartTime
+                self.currentSeconds = self.clipTimelineStart
             } else {
-                self.currentSeconds = t
+                self.currentSeconds = self.sourceToTimeline(sourceTime)
             }
         }
 
@@ -260,9 +307,9 @@ final class Project {
         if player.timeControlStatus == .playing {
             player.pause()
         } else {
-            // If the playhead drifted outside the trim window, snap to trim-in before playing.
-            if currentSeconds < trimStartTime || currentSeconds >= trimEndTime - 0.01 {
-                seek(to: trimStartTime)
+            // If the playhead drifted outside the clip, snap to clip-in (timeline coords).
+            if currentSeconds < clipTimelineStart || currentSeconds >= clipTimelineEnd - 0.01 {
+                seek(to: clipTimelineStart)
             }
             player.play()
         }
