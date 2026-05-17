@@ -478,6 +478,8 @@ private struct AspectRatioChip: View {
                     .frame(height: 24)
                 Text(aspect.shortLabel)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
             .frame(maxWidth: .infinity, minHeight: 60)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
