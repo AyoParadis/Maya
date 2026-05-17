@@ -1,0 +1,187 @@
+<div align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="Maya app icon" />
+
+  # Maya
+
+  **Wrap your iPhone screen recordings in a beautiful device frame, add cinematic zoom moments, and export ready-to-share videos.**
+
+  A native macOS app for turning raw screen recordings into polished marketing clips, social-media posts, and in-app tutorial overlays.
+
+  ![Maya screenshot](docs/screenshot.png)
+</div>
+
+---
+
+## ✨ Features
+
+### 🎬 Device framing
+- Drop an iPhone screen recording — Maya wraps it in a clean **iPhone 15 Pro** mockup with the correct screen cutout, corner radius, and Dynamic Island.
+- The framed phone lives inside a configurable canvas (1:1, 9:16, 16:9, 4:5, 3:4) so you can target Reels, Shorts, TikTok, YouTube, X, or in-app overlays from a single source.
+- Manually scale and reposition the phone on the canvas via slider + drag.
+
+### 🎨 Backgrounds
+A single picker, five modes:
+- **None** — Photoshop-style checkered preview, exports to `.mov` with **HEVC + alpha**.
+- **Solid** — brand-aligned palette + custom hex.
+- **Gradient** — eight curated brand presets, all derived from the app's official color (`#6466FA`).
+- **Image** — drop in any image, scale-to-fill.
+- **Video Blur** — Keynote-style blurred poster of your own video as the backdrop.
+
+### ⏱ Timeline & zoom animations
+Like shots.so for Mac:
+- Bottom track: live video thumbnails strip.
+- Top track: hover anywhere to drop a **zoom event** with a `+` affordance.
+- Each zoom event has a **start**, **duration**, **scale**, **focus** (Top / Center / Bottom), independent **zoom-in / zoom-out timing**, and a chosen **animation curve**.
+- Drag the block to move it; drag the edges to resize. Everything snaps to **0.25 s** intervals and to the **playhead** when nearby.
+- Live tooltips show timestamps while dragging.
+- The playhead is scrubbable.
+
+### 🌀 Six animation curves
+| Curve | Feel |
+|---|---|
+| **Spring** | Soft overshoot, lively (default) |
+| **Bouncy** | More overshoot, playful |
+| **Smooth** | Classic ease in/out |
+| **Snappy** | Fast attack, slow settle |
+| **Gentle** | Soft and organic |
+| **Linear** | Constant rate, mechanical |
+
+### 🚀 One-click presets
+Pre-baked combinations of scale + focus + duration + curve: *Subtle Pop, Quick Punch, Dramatic, Top Focus, Bottom Focus, Long Hold, Mechanical, Soft Reveal.*
+
+### 📤 Smart export
+- **With background** → 1080×1080 (or your aspect) `.mp4`, H.264. Drop straight into Reels / TikTok / Shorts.
+- **Transparent** (background set to *None*) → `.mov` with HEVC + alpha channel. Composite the framed phone over any UI inside another `AVPlayer` / `AVKit` consumer — perfect for in-app tutorials, Final Cut, Motion.
+- All zoom animations bake into both exports.
+
+### ⌨️ Keyboard shortcuts
+| Key | Action |
+|---|---|
+| <kbd>Space</kbd> | Play / pause |
+| <kbd>M</kbd> | Mute / unmute |
+| <kbd>←</kbd> / <kbd>→</kbd> | Scrub ±0.25 s |
+| <kbd>⇧</kbd>+<kbd>←</kbd> / <kbd>⇧</kbd>+<kbd>→</kbd> | Scrub ±1 s |
+| <kbd>⌫</kbd> | Delete selected zoom event |
+| <kbd>⌘</kbd>+<kbd>D</kbd> | Duplicate selected zoom event |
+
+---
+
+## 🛠 Tech stack
+
+- **SwiftUI** + **AppKit** (custom `NSViewRepresentable` for `AVPlayerLayer`)
+- **AVFoundation**: `AVMutableComposition`, custom `AVVideoCompositing`, `AVAssetExportSession`, manual `AVAssetReader` / `AVAssetWriter` pipeline for HEVC + alpha
+- **Core Image** + **Metal** for per-frame compositing
+- **VideoToolbox** for HEVC-with-alpha encoder properties
+- **Swift Concurrency** (`@Observable`, actors, async/await) — export runs on a dedicated actor so the UI never blocks
+- **App Sandbox** with file hard-link/copy adoption strategy (videos are brought into the sandbox container on load so AVFoundation reads work from any thread)
+
+### Requirements
+- macOS 26.3 (Tahoe) or later
+- Xcode 26.5 or later
+- An iPhone screen recording in `.mp4` / `.mov` format
+
+### Build & run
+```bash
+git clone https://github.com/ronaldo-avalos/Maya.git
+cd Maya
+open Maya.xcodeproj
+# In Xcode: ⌘R
+```
+
+---
+
+## 🤝 Contributing — Maya is open source
+
+This project is in active development and **contributions are very welcome**. Whether you're an iOS/macOS dev, a designer, or someone who just loves polished tools, there's a place for you.
+
+### High-impact contribution areas
+
+#### 📱 More device frames
+Right now only **iPhone 15 Pro** is supported. We'd love PRs that add:
+- iPhone 16 / 16 Pro / 16 Pro Max
+- iPhone 15 / 15 Plus
+- iPhone SE
+- iPad mini / iPad Pro
+- Older models (iPhone 14, 13, 12 family)
+- Android devices (Pixel, Galaxy)
+
+To add a frame:
+1. Drop a transparent-screen PNG into `Maya/Assets.xcassets/` (the imageset).
+2. Add a `static let` entry to `Maya/Models/DeviceFrame.swift` with the screen rect (normalized to the PNG size) and the corner radius.
+3. Submit a PR with a screenshot of the result. That's it.
+
+#### 🎯 Feature ideas (good first issues)
+- **Undo / Redo** for canvas, animations, and background changes (`⌘Z` / `⌘⇧Z`).
+- **Saved projects** — persist a `.mayaproj` document on disk so users can come back to a layout.
+- **Animation presets gallery** — visual previews of each preset playing on a sample phone in the editor sheet.
+- **Trim controls** on the video track (drag in/out points to crop the recording).
+- **Click-spot animations** — automatically zoom toward where the user tapped in the screen recording (parse the `.mp4` metadata if available, or expose a click-to-mark workflow).
+- **Caption / annotation overlays** with their own timeline track.
+- **Watermark toggle** for users who want a "Made with Maya" footer.
+
+#### 🎨 Design / UX polish
+- A more refined **empty state** for the canvas before any video is loaded.
+- A **welcome screen** with recent projects.
+- **Onboarding tooltips** for first-launch.
+- An **export progress sheet** with thumbnail preview of the result.
+- A **keyboard shortcuts cheat sheet** accessible from a menu item.
+- More **gradient and solid color presets** that work for non-indigo brands.
+
+#### 🐛 Engineering improvements
+- **More iPhone screen orientations** (currently the compositor assumes portrait recordings).
+- **HDR pass-through** for HDR screen recordings.
+- **Audio waveform** rendering on the timeline.
+- **Apple Silicon performance profiling** of the export pipeline.
+- **CI** with GitHub Actions (build + lint).
+- **Unit tests** for `AnimationSampler`, `DeviceFrame` coordinate math, and `BlurPosterCache`.
+
+### How to contribute
+
+1. **Fork** the repo and create a feature branch: `git checkout -b feature/iphone-16-pro`
+2. **Code** the change. Try to match the existing style — small files, no unnecessary comments, single-responsibility views.
+3. **Test** locally (⌘R). Take a screenshot or short GIF showing the change.
+4. **Open a PR** with a clear title, a short description, and the screenshot/GIF.
+
+For larger features, **open an issue first** so we can align on the approach before you spend hours on it.
+
+### Code map
+
+```
+Maya/
+├── MayaApp.swift                 App entry
+├── ContentView.swift             Root → EditorView
+├── Models/                       State + value types (Project, ZoomSegment, DeviceFrame, …)
+├── Services/                     AVFoundation + Core Image plumbing
+│   ├── DeviceFrameCompositor     Custom AVVideoCompositing (per-frame compositing)
+│   ├── ExportService             Actor that runs both .mp4 and .mov exports
+│   ├── AnimationSampler          Envelope math for zoom segments
+│   ├── BlurPosterCache           One-shot blurred-frame cache
+│   └── VideoThumbnailGenerator   Async timeline thumbnails
+├── Views/                        SwiftUI views
+│   ├── EditorView                Top-level layout (sidebar / canvas / timeline / editor panel)
+│   ├── CanvasView                1:1 (or other ratio) canvas with framed phone + background
+│   ├── FramedDeviceView          Composite of video + frame overlay
+│   ├── BackgroundPicker          Mode tabs + per-mode controls
+│   ├── SettingsSidebar           Left sidebar (recording, canvas, transform, export)
+│   ├── AnimationEditorSheet      Right panel for editing a selected zoom event
+│   └── Timeline/                 Ruler, video strip, animations track, draggable playhead
+└── Assets.xcassets/              iPhone frame PNGs + app icon
+```
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
+
+You can fork, use Maya in personal or commercial projects, and ship derived work. Attribution is appreciated but not required.
+
+---
+
+## 🙏 Acknowledgements
+
+- The app's brand color `#6466FA` borrows from the Tailwind/Indigo family.
+- iPhone 15 Pro frame PNG generated by the project owner.
+- Built with ❤️ on macOS Tahoe.
+
+If Maya helps you ship a video, tag [@ronaldo-avalos](https://github.com/ronaldo-avalos) — we'd love to see it.
