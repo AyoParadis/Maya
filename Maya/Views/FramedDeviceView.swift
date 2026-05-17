@@ -66,8 +66,11 @@ struct FramedDeviceView: View {
     }
 
     private var sampled: AnimationSample {
+        // `currentSeconds` is in timeline coords but the sampler compares against
+        // animations stored in source coords. Convert before sampling so animations
+        // fire on the right source frame regardless of where the clip sits.
         AnimationSampler.sample(
-            at: project.currentSeconds,
+            at: project.timelineToSource(project.currentSeconds),
             segments: project.animations,
             baseScale: project.scale,
             baseOffset: project.offset
