@@ -13,5 +13,7 @@ struct MayaApp: App {
         WindowGroup {
             ContentView()
         }
+        .defaultSize(width: 1360, height: 900)
+        .windowResizability(.contentMinSize)
     }
 }

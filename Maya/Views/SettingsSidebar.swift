@@ -30,9 +30,11 @@ struct SettingsSidebar: View {
                 }
                 Spacer(minLength: 12)
             }
-            .padding(16)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
         }
-        .frame(minWidth: 280)
+        .scrollIndicators(.visible)
+        .frame(minWidth: 320, idealWidth: 360)
     }
 
     private var deviceSection: some View {
@@ -40,7 +42,7 @@ struct SettingsSidebar: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Device").font(.headline)
                 Spacer()
-                if project.deviceModel.kind == .physical {
+                if project.deviceModel.kind == .physical || project.deviceModel.kind == .drawn {
                     Text(project.deviceColor.name)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -51,7 +53,7 @@ struct SettingsSidebar: View {
 
             // Model picker — wraps to multiple rows so 5 entries (Off, Generic
             // and the three Pro models) all fit comfortably in the sidebar.
-            let columns = [GridItem(.adaptive(minimum: 78), spacing: 6)]
+            let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
                 ForEach(DeviceModel.all) { model in
                     DeviceModelChip(
@@ -65,7 +67,7 @@ struct SettingsSidebar: View {
             }
 
             // Color swatches only apply to physical models.
-            if project.deviceModel.kind == .physical {
+            if project.deviceModel.kind == .physical || project.deviceModel.kind == .drawn {
                 HStack(spacing: 10) {
                     ForEach(project.deviceModel.colors) { color in
                         DeviceColorSwatch(
@@ -236,7 +238,7 @@ struct SettingsSidebar: View {
                     Button {
                         project.togglePlayback()
                     } label: {
-                        Image(systemName: (project.player?.timeControlStatus == .playing) ? "pause.fill" : "play.fill")
+                        Image(systemName: project.isPlaying ? "pause.fill" : "play.fill")
                             .frame(width: 16)
                     }
                     .help("Play / Pause (Space)")
@@ -251,7 +253,12 @@ struct SettingsSidebar: View {
 
                     Spacer()
 
-                    Button("Replace…") { openVideoPicker() }
+                    Button {
+                        openVideoPicker()
+                    } label: {
+                        Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
             } else {
                 Button {
@@ -270,18 +277,22 @@ struct SettingsSidebar: View {
             Text("Size & Position")
                 .font(.headline)
 
-            HStack {
+            HStack(spacing: 10) {
                 Image(systemName: "minus.magnifyingglass")
+                    .foregroundStyle(.secondary)
                 Slider(value: $project.scale, in: 0.3...1.6)
                 Image(systemName: "plus.magnifyingglass")
+                    .foregroundStyle(.secondary)
             }
             Text(String(format: "Scale: %.0f%%", project.scale * 100))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Button("Reset position") {
+            Button {
                 project.offset = .zero
                 project.scale = 0.85
+            } label: {
+                Label("Reset position", systemImage: "arrow.counterclockwise")
             }
             .controlSize(.small)
         }
@@ -394,7 +405,7 @@ private struct DeviceModelChip: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .frame(maxWidth: .infinity, minHeight: 30)
+            .frame(maxWidth: .infinity, minHeight: 34)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background(RoundedRectangle(cornerRadius: 7).fill(fillColor))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(strokeColor, lineWidth: 1))
@@ -433,7 +444,7 @@ private struct DeviceColorSwatch: View {
                     )
                     .shadow(color: .black.opacity(0.08), radius: 1, y: 0.5)
             }
-            .frame(width: 32, height: 32)
+            .frame(width: 34, height: 34)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -467,8 +478,10 @@ private struct AspectRatioChip: View {
                     .frame(height: 24)
                 Text(aspect.shortLabel)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
-            .frame(maxWidth: .infinity, minHeight: 56)
+            .frame(maxWidth: .infinity, minHeight: 60)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background(
                 RoundedRectangle(cornerRadius: 8)

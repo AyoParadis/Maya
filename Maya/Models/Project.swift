@@ -17,6 +17,7 @@ final class Project {
     var videoNaturalSize: CGSize = .zero
     var videoDuration: CMTime = .zero
     var currentSeconds: Double = 0
+    var isPlaying: Bool = false
 
     var scale: CGFloat = 0.85
     var offset: CGSize = .zero
@@ -187,6 +188,7 @@ final class Project {
         self.videoDuration = duration
         self.player = newPlayer
         self.currentSeconds = 0
+        self.isPlaying = true
 
         // Now safe to remove the previous working copy.
         Self.cleanupCachedSource(at: previousURL)
@@ -203,11 +205,23 @@ final class Project {
 
     func togglePlayback() {
         guard let player else { return }
-        if player.timeControlStatus == .playing {
+        if isPlaying || player.timeControlStatus == .playing {
             player.pause()
+            isPlaying = false
         } else {
             player.play()
+            isPlaying = true
         }
+    }
+
+    func setPlayback(_ shouldPlay: Bool) {
+        guard let player else { return }
+        if shouldPlay {
+            player.play()
+        } else {
+            player.pause()
+        }
+        isPlaying = shouldPlay
     }
 
     // MARK: - Sandbox file adoption

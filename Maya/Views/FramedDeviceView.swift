@@ -26,7 +26,7 @@ struct FramedDeviceView: View {
                 return s.width / s.height
             }
             return project.deviceFrame.frameAspectRatio
-        case .physical:
+        case .physical, .drawn:
             return project.deviceFrame.frameAspectRatio
         }
     }
@@ -44,7 +44,7 @@ struct FramedDeviceView: View {
     /// Absolute corner radius (in pt) used to mask the video.
     private var screenCornerRadius: CGFloat {
         switch project.deviceFrame.kind {
-        case .physical:
+        case .physical, .drawn:
             return project.deviceFrame.screenCornerRadiusNormalized * phoneSize.width
         case .none, .generic:
             return project.bareCornerRadius * min(screenRect.width, screenRect.height)
@@ -86,7 +86,7 @@ struct FramedDeviceView: View {
             .offset(x: screenRect.minX, y: screenRect.minY)
 
             switch project.deviceFrame.kind {
-            case .physical:
+            case .physical, .drawn:
                 DeviceFrameOverlay(frame: project.deviceFrame)
                     .frame(width: phoneSize.width, height: phoneSize.height)
             case .generic:
@@ -156,34 +156,17 @@ struct DeviceFrameOverlay: View {
 
 struct PlaceholderFrameView: View {
     let frame: DeviceFrame
+    private var metal: Color { Color(hex: frame.swatchHex) ?? Color(white: 0.12) }
 
     var body: some View {
         GeometryReader { g in
             let size = g.size
-            let bezelRadius = size.width * 0.135
+            let bezelRadius = size.width * frame.outerCornerRadiusFraction
             let screenRect = frame.screenRect(in: size)
             let screenRadius = frame.screenCornerRadius(in: size)
 
             ZStack {
-                RoundedRectangle(cornerRadius: bezelRadius)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.16), Color(white: 0.05)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: bezelRadius)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color(white: 0.45), Color(white: 0.15)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: max(1, size.width * 0.004)
-                            )
-                    )
+                frameHull(size: size, bezelRadius: bezelRadius, screenRect: screenRect)
 
                 RoundedRectangle(cornerRadius: screenRadius)
                     .frame(width: screenRect.width, height: screenRect.height)
@@ -193,5 +176,135 @@ struct PlaceholderFrameView: View {
             .compositingGroup()
             .shadow(color: .black.opacity(0.35), radius: size.width * 0.04, x: 0, y: size.width * 0.02)
         }
+    }
+
+    @ViewBuilder
+    private func frameHull(size: CGSize, bezelRadius: CGFloat, screenRect: CGRect) -> some View {
+        switch frame.style {
+        case .laptop:
+            laptopHull(size: size, screenRect: screenRect)
+        case .tablet:
+            tabletHull(size: size, bezelRadius: bezelRadius)
+        case .androidPhone:
+            androidHull(size: size, bezelRadius: bezelRadius)
+        case .classicPhone, .modernPhone:
+            phoneHull(size: size, bezelRadius: bezelRadius)
+        }
+    }
+
+    private func phoneHull(size: CGSize, bezelRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: bezelRadius)
+            .fill(
+                LinearGradient(
+                    colors: [metal.lightened(0.18), metal, metal.darkened(0.28)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: bezelRadius)
+                    .stroke(Color.white.opacity(0.22), lineWidth: max(1, size.width * 0.004))
+            )
+            .overlay(alignment: .top) {
+                if frame.style == .classicPhone {
+                    Capsule()
+                        .fill(Color.black.opacity(0.28))
+                        .frame(width: size.width * 0.18, height: max(2, size.width * 0.012))
+                        .padding(.top, size.height * 0.018)
+                }
+            }
+    }
+
+    private func androidHull(size: CGSize, bezelRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: bezelRadius)
+            .fill(
+                LinearGradient(
+                    colors: [metal.lightened(0.12), metal.darkened(0.2)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(RoundedRectangle(cornerRadius: bezelRadius).stroke(.white.opacity(0.18), lineWidth: max(1, size.width * 0.004)))
+            .overlay(alignment: .top) {
+                Circle()
+                    .fill(.black.opacity(0.5))
+                    .frame(width: size.width * 0.035, height: size.width * 0.035)
+                    .padding(.top, size.height * 0.018)
+            }
+    }
+
+    private func tabletHull(size: CGSize, bezelRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: bezelRadius)
+            .fill(
+                LinearGradient(
+                    colors: [metal.lightened(0.16), metal.darkened(0.18)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(RoundedRectangle(cornerRadius: bezelRadius).stroke(.white.opacity(0.2), lineWidth: max(1, size.width * 0.004)))
+            .overlay(alignment: .top) {
+                Circle()
+                    .fill(.black.opacity(0.3))
+                    .frame(width: size.width * 0.022, height: size.width * 0.022)
+                    .padding(.top, size.height * 0.014)
+            }
+    }
+
+    private func laptopHull(size: CGSize, screenRect: CGRect) -> some View {
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: size.width * 0.028)
+                .fill(LinearGradient(colors: [metal.lightened(0.14), metal.darkened(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(RoundedRectangle(cornerRadius: size.width * 0.028).stroke(.white.opacity(0.22), lineWidth: max(1, size.width * 0.003)))
+                .padding(.bottom, size.height * 0.11)
+
+            RoundedRectangle(cornerRadius: size.width * 0.02)
+                .fill(Color.black.opacity(0.26))
+                .frame(width: screenRect.width + size.width * 0.028, height: screenRect.height + size.height * 0.032)
+                .offset(y: screenRect.minY - size.height * 0.016)
+
+            VStack(spacing: 0) {
+                Spacer()
+                RoundedRectangle(cornerRadius: size.width * 0.018)
+                    .fill(LinearGradient(colors: [metal.lightened(0.24), metal.darkened(0.12)], startPoint: .top, endPoint: .bottom))
+                    .frame(height: size.height * 0.12)
+                    .overlay(alignment: .top) {
+                        RoundedRectangle(cornerRadius: size.width * 0.008)
+                            .fill(.black.opacity(0.12))
+                            .frame(width: size.width * 0.16, height: size.height * 0.012)
+                            .padding(.top, size.height * 0.022)
+                    }
+            }
+        }
+    }
+}
+
+private extension DeviceFrame {
+    var swatchHex: String {
+        let parts = id.split(separator: ".")
+        guard parts.count == 2,
+              let model = DeviceModel.model(id: String(parts[0])),
+              let color = model.color(id: String(parts[1])) else {
+            return "#1F2937"
+        }
+        return color.swatchHex
+    }
+}
+
+private extension Color {
+    func lightened(_ amount: Double) -> Color {
+        adjusted(by: abs(amount))
+    }
+
+    func darkened(_ amount: Double) -> Color {
+        adjusted(by: -abs(amount))
+    }
+
+    private func adjusted(by amount: Double) -> Color {
+        guard let ns = NSColor(self).usingColorSpace(.sRGB) else { return self }
+        let r = min(max(ns.redComponent + amount, 0), 1)
+        let g = min(max(ns.greenComponent + amount, 0), 1)
+        let b = min(max(ns.blueComponent + amount, 0), 1)
+        return Color(red: r, green: g, blue: b, opacity: ns.alphaComponent)
     }
 }
