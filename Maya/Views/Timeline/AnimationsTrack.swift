@@ -6,6 +6,9 @@ struct AnimationsTrack: View {
     let onSelectSegment: (ZoomSegment) -> Void
 
     @State private var hoverX: CGFloat?
+    /// Set by a SegmentBlock during drag when its snapped time matches the playhead.
+    /// We render a vertical guide line at that x coordinate as long as it is set.
+    @State private var snapGuideX: CGFloat?
 
     static let snapStep: Double = 0.25
     static let playheadSnapTolerance: Double = 0.15
@@ -25,9 +28,11 @@ struct AnimationsTrack: View {
 
                 // Existing segments
                 ForEach(project.animations) { segment in
+                    let isLive = segment.endTime > project.trimStartTime && segment.startTime < project.trimEndTime
                     SegmentBlock(
                         segment: segment,
                         isSelected: project.selectedAnimationID == segment.id,
+                        isLive: isLive,
                         trackWidth: width,
                         totalDuration: duration,
                         playheadTime: project.currentSeconds,
@@ -39,8 +44,25 @@ struct AnimationsTrack: View {
                         onChange: { updated in
                             project.updateZoomSegment(updated)
                         },
-                        onDelete: { project.removeZoomSegment(id: segment.id) }
+                        onDelete: { project.removeZoomSegment(id: segment.id) },
+                        onSnap: { snappedTime in
+                            if let t = snappedTime, duration > 0 {
+                                snapGuideX = CGFloat(t / duration) * width
+                            } else {
+                                snapGuideX = nil
+                            }
+                        }
                     )
+                }
+
+                // Snap guide: vertical accent line drawn at the snapped time during a drag.
+                if let gx = snapGuideX {
+                    Rectangle()
+                        .fill(Color(red: 1.0, green: 0.82, blue: 0.10))
+                        .frame(width: 1, height: height - 8)
+                        .offset(x: gx - 0.5, y: 4)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
 
                 // Hover-to-add: only when not over an existing segment.
@@ -115,6 +137,7 @@ func formatTimestamp(_ t: Double) -> String {
 private struct SegmentBlock: View {
     let segment: ZoomSegment
     let isSelected: Bool
+    let isLive: Bool
     let trackWidth: CGFloat
     let totalDuration: Double
     let playheadTime: Double
@@ -122,9 +145,13 @@ private struct SegmentBlock: View {
     let onTap: () -> Void
     let onChange: (ZoomSegment) -> Void
     let onDelete: () -> Void
+    /// Called when the block's drag/resize snaps to a salient time (currently: playhead).
+    /// Passing nil clears the active snap.
+    let onSnap: (Double?) -> Void
 
     @State private var dragSnapshot: (start: Double, duration: Double)?
     @State private var tooltipText: String?
+    @State private var isHovering: Bool = false
 
     private var startX: CGFloat {
         guard totalDuration > 0 else { return 0 }
@@ -157,6 +184,9 @@ private struct SegmentBlock: View {
             }
         }
         .position(x: startX + blockWidth / 2, y: (height + 12) / 2)
+        .brightness(isHovering ? 0.06 : 0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+        .onHover { isHovering = $0 }
         .contextMenu {
             Button("Edit zoom") { onTap() }
             Button(role: .destructive) { onDelete() } label: { Label("Delete zoom", systemImage: "trash") }
@@ -190,6 +220,18 @@ private struct SegmentBlock: View {
                         lineWidth: isSelected ? 2 : 1)
         )
         .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+        // When the panel is editing this segment, glow ring around the block makes the
+        // connection between block and panel unambiguous.
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: "#6466FA") ?? .accentColor, lineWidth: 2)
+                .blur(radius: 6)
+                .opacity(isSelected ? 0.85 : 0)
+                .padding(-3)
+                .allowsHitTesting(false)
+        )
+        .opacity(isLive ? 1.0 : 0.4)
+        .saturation(isLive ? 1.0 : 0.5)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .gesture(
@@ -203,10 +245,14 @@ private struct SegmentBlock: View {
                     s.startTime = max(0, min(snapped, max(totalDuration - s.duration, 0)))
                     onChange(s)
                     tooltipText = "\(formatTimestamp(s.startTime)) → \(formatTimestamp(s.endTime))"
+                    // Report a snap when our left edge is within tolerance of the playhead.
+                    let snappedToPlayhead = abs(s.startTime - playheadTime) < 0.001
+                    onSnap(snappedToPlayhead ? playheadTime : nil)
                 }
                 .onEnded { _ in
                     dragSnapshot = nil
                     tooltipText = nil
+                    onSnap(nil)
                 }
         )
     }
@@ -214,12 +260,15 @@ private struct SegmentBlock: View {
     private func handle(alignment: HorizontalAlignment, onDrag: @escaping (CGFloat) -> Void) -> some View {
         let isLeading = alignment == .leading
         return Capsule()
-            .fill(Color.white.opacity(isSelected ? 0.55 : 0.28))
+            .fill(Color.white.opacity(isSelected ? 0.7 : 0.32))
             .frame(width: 3, height: height * 0.55)
             .padding(.horizontal, 6)
             .background(Color.white.opacity(0.001))
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, alignment: isLeading ? .leading : .trailing)
+            .onHover { hovering in
+                if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { v in
@@ -229,6 +278,7 @@ private struct SegmentBlock: View {
                     .onEnded { _ in
                         dragSnapshot = nil
                         tooltipText = nil
+                        onSnap(nil)
                     }
             )
     }
@@ -248,6 +298,7 @@ private struct SegmentBlock: View {
             s.startTime = snappedStart
             s.duration = min(newDuration, ZoomSegment.durationRange.upperBound)
             tooltipText = formatTimestamp(s.startTime)
+            onSnap(abs(s.startTime - playheadTime) < 0.001 ? playheadTime : nil)
         case .trailing:
             let maxDur = min(totalDuration - s.startTime, ZoomSegment.durationRange.upperBound)
             let proposedDuration = max(ZoomSegment.durationRange.lowerBound,
@@ -255,6 +306,7 @@ private struct SegmentBlock: View {
             let endTime = AnimationsTrack.snap(s.startTime + proposedDuration, toPlayhead: playheadTime)
             s.duration = max(ZoomSegment.durationRange.lowerBound, endTime - s.startTime)
             tooltipText = "\(formatTimestamp(s.endTime)) · \(String(format: "%.2fs", s.duration))"
+            onSnap(abs(s.endTime - playheadTime) < 0.001 ? playheadTime : nil)
         }
         onChange(s)
     }

@@ -18,6 +18,8 @@ actor ExportService {
         let backgroundImageCG: CGImage?
         /// nil when `deviceFrame.kind == .none` — the compositor skips the overlay step.
         let frameOverlayCG: CGImage?
+        /// Animations in absolute source-video coordinates. Each export path shifts/filters
+        /// them as appropriate for its time base (see `animationsShiftedToTrim`).
         let animations: [ZoomSegment]
         let renderSize: CGSize
         let bareCornerRadius: CGFloat
@@ -25,6 +27,8 @@ actor ExportService {
         let bareBezelColor: CIColor
         let shadow: PhoneShadow
         let shadowColor: CIColor
+        /// Source range to export. When the user hasn't trimmed, this is the full clip.
+        let trimRange: CMTimeRange
     }
 
     func exportWithBackground(
@@ -56,7 +60,9 @@ actor ExportService {
         let asset = AVURLAsset(url: snapshot.sourceVideoURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let sourceVideoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
-        let duration = try await asset.load(.duration)
+        let trimRange = snapshot.trimRange
+        let duration = trimRange.duration
+        let trimStartSeconds = trimRange.start.seconds
 
         let composition = AVMutableComposition()
         guard let compositionVideoTrack = composition.addMutableTrack(
@@ -65,7 +71,7 @@ actor ExportService {
         ) else { throw ExportError.cannotBuildComposition }
 
         try compositionVideoTrack.insertTimeRange(
-            CMTimeRange(start: .zero, duration: duration),
+            trimRange,
             of: sourceVideoTrack,
             at: .zero
         )
@@ -78,7 +84,7 @@ actor ExportService {
             preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
             try? compositionAudio.insertTimeRange(
-                CMTimeRange(start: .zero, duration: duration),
+                trimRange,
                 of: sourceAudio,
                 at: .zero
             )
@@ -100,7 +106,9 @@ actor ExportService {
         instruction.backgroundImage = backgroundImage
         instruction.frameOverlay = frameOverlay
         instruction.renderTransparent = false
-        instruction.animations = snapshot.animations
+        // Composition starts at zero in this path; shift animations so they fire at the
+        // right moments in the trimmed timeline.
+        instruction.animations = Self.animationsShiftedToTrim(snapshot.animations, trimStart: trimStartSeconds, trimDuration: duration.seconds)
         instruction.bareCornerRadius = snapshot.bareCornerRadius
         instruction.bareBezelWidth = snapshot.bareBezelWidth
         instruction.bareBezelColor = snapshot.bareBezelColor
@@ -147,7 +155,9 @@ actor ExportService {
         let asset = AVURLAsset(url: snapshot.sourceVideoURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let sourceVideoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
-        let duration = try await asset.load(.duration)
+        let trimRange = snapshot.trimRange
+        let duration = trimRange.duration
+        let trimStartTime = trimRange.start
         let rawFrameDuration = try await sourceVideoTrack.load(.minFrameDuration)
         let frameDuration: CMTime = (rawFrameDuration == .invalid || rawFrameDuration.seconds <= 0)
             ? CMTime(value: 1, timescale: 60)
@@ -157,7 +167,10 @@ actor ExportService {
         let frameOverlay = snapshot.frameOverlayCG.map { CIImage(cgImage: $0) }
 
         let instruction = DeviceFrameCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
+        // The reader produces samples with source-time PTS; the video composition sees them
+        // as composition time. Cover the trim window in source coords so the instruction
+        // matches every sample we'll read.
+        instruction.timeRange = trimRange
         instruction.deviceFrame = snapshot.deviceFrame
         instruction.scale = snapshot.scale
         instruction.offsetFraction = snapshot.offsetFraction
@@ -165,6 +178,8 @@ actor ExportService {
         instruction.backgroundImage = nil
         instruction.frameOverlay = frameOverlay
         instruction.renderTransparent = true
+        // Animations stay in absolute source coords here — the compositor will see
+        // composition time = source PTS.
         instruction.animations = snapshot.animations
         instruction.bareCornerRadius = snapshot.bareCornerRadius
         instruction.bareBezelWidth = snapshot.bareBezelWidth
@@ -183,6 +198,8 @@ actor ExportService {
         }
 
         let reader = try AVAssetReader(asset: asset)
+        // Honor the trim window: the reader only emits samples whose PTS falls inside trimRange.
+        reader.timeRange = trimRange
         let videoOutput = AVAssetReaderVideoCompositionOutput(
             videoTracks: videoTracks,
             videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
@@ -261,12 +278,13 @@ actor ExportService {
                     input: videoInput,
                     adaptor: pixelAdaptor,
                     totalSeconds: totalSeconds,
+                    timeOffset: trimStartTime,
                     progress: progress
                 )
             }
             if let ao = audioOutput, let ai = audioInput {
                 group.addTask { [self] in
-                    try await self.pumpAudio(output: ao, input: ai)
+                    try await self.pumpAudio(output: ao, input: ai, timeOffset: trimStartTime)
                 }
             }
             try await group.waitForAll()
@@ -284,6 +302,7 @@ actor ExportService {
         input: AVAssetWriterInput,
         adaptor: AVAssetWriterInputPixelBufferAdaptor,
         totalSeconds: Double,
+        timeOffset: CMTime,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         let queue = DispatchQueue(label: "maya.export.video", qos: .userInitiated)
@@ -297,15 +316,17 @@ actor ExportService {
                         state.finish(.success(()))
                         return
                     }
-                    let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                    let srcPTS = CMSampleBufferGetPresentationTimeStamp(sample)
+                    // Output file timeline starts at 0; subtract the trim-in offset.
+                    let outPTS = CMTimeSubtract(srcPTS, timeOffset)
                     guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-                    if !adaptor.append(buffer, withPresentationTime: pts) {
+                    if !adaptor.append(buffer, withPresentationTime: outPTS) {
                         input.markAsFinished()
                         state.finish(.failure(ExportError.appendFailed))
                         return
                     }
                     if totalSeconds > 0 {
-                        let p = pts.seconds / totalSeconds
+                        let p = outPTS.seconds / totalSeconds
                         progress(min(max(p, 0), 0.99))
                     }
                 }
@@ -315,7 +336,8 @@ actor ExportService {
 
     private nonisolated func pumpAudio(
         output: AVAssetReaderTrackOutput,
-        input: AVAssetWriterInput
+        input: AVAssetWriterInput,
+        timeOffset: CMTime
     ) async throws {
         let queue = DispatchQueue(label: "maya.export.audio", qos: .userInitiated)
         let state = ContinuationGuard<Void>()
@@ -328,13 +350,71 @@ actor ExportService {
                         state.finish(.success(()))
                         return
                     }
-                    if !input.append(sample) {
+                    // Shift the audio sample PTS to align with the output's zero baseline.
+                    if let shifted = Self.shiftSamplePTS(sample, by: timeOffset) {
+                        if !input.append(shifted) {
+                            input.markAsFinished()
+                            state.finish(.failure(ExportError.appendFailed))
+                            return
+                        }
+                    } else if !input.append(sample) {
                         input.markAsFinished()
                         state.finish(.failure(ExportError.appendFailed))
                         return
                     }
                 }
             }
+        }
+    }
+
+    /// Returns a sample buffer whose presentation timestamp is shifted by `-offset`.
+    /// Falls back to nil if rewriting fails; the caller should append the original sample.
+    private nonisolated static func shiftSamplePTS(_ sample: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
+        guard offset != .zero else { return sample }
+        var count = CMItemCount(0)
+        CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+        guard count > 0 else { return nil }
+        var infos = [CMSampleTimingInfo](repeating: .init(), count: count)
+        let status = CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: count, arrayToFill: &infos, entriesNeededOut: nil)
+        guard status == noErr else { return nil }
+        for i in 0..<infos.count {
+            if infos[i].presentationTimeStamp.isNumeric {
+                infos[i].presentationTimeStamp = CMTimeSubtract(infos[i].presentationTimeStamp, offset)
+            }
+            if infos[i].decodeTimeStamp.isNumeric {
+                infos[i].decodeTimeStamp = CMTimeSubtract(infos[i].decodeTimeStamp, offset)
+            }
+        }
+        var out: CMSampleBuffer?
+        let s = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sample,
+            sampleTimingEntryCount: count,
+            sampleTimingArray: infos,
+            sampleBufferOut: &out
+        )
+        guard s == noErr else { return nil }
+        return out
+    }
+
+    /// Shifts every segment by `-trimStart`, drops segments entirely outside `[0, trimDuration]`,
+    /// and clamps segments that straddle the boundary so they stay inside the trimmed window.
+    /// Re-clamps `transitionIn`/`transitionOut` to the new duration since duration may shrink.
+    private nonisolated static func animationsShiftedToTrim(_ segments: [ZoomSegment], trimStart: Double, trimDuration: Double) -> [ZoomSegment] {
+        guard trimDuration > 0 else { return [] }
+        let minDuration = 0.4
+        return segments.compactMap { seg in
+            let newStart = seg.startTime - trimStart
+            let newEnd = newStart + seg.duration
+            if newEnd <= 0 || newStart >= trimDuration { return nil }
+            var s = seg
+            s.startTime = max(0, newStart)
+            let effectiveEnd = min(newEnd, trimDuration)
+            s.duration = max(minDuration, effectiveEnd - s.startTime)
+            let half = max(0.05, s.duration / 2)
+            s.transitionIn = min(s.transitionIn, half)
+            s.transitionOut = min(s.transitionOut, half)
+            return s
         }
     }
 
@@ -417,6 +497,16 @@ actor ExportService {
         if case .videoBlur = project.background {
             blurPosterCG = BlurPosterCache.shared.cachedCGImage(for: url)
         }
+        // Build the export trim range. If the user hasn't touched the trim, this is the
+        // full asset duration.
+        let trimStart = max(0, project.trimStartTime)
+        let trimEnd = project.trimEndTime > 0 ? project.trimEndTime : project.durationSeconds
+        let trimDuration = max(0.001, trimEnd - trimStart)
+        let trimRange = CMTimeRange(
+            start: CMTime(seconds: trimStart, preferredTimescale: 600),
+            duration: CMTime(seconds: trimDuration, preferredTimescale: 600)
+        )
+
         return Snapshot(
             sourceVideoURL: url,
             deviceFrame: project.deviceFrame,
@@ -432,7 +522,8 @@ actor ExportService {
             bareBezelWidth: project.bareBezelWidth,
             bareBezelColor: (Color(hex: project.bareBezelHex) ?? .black).ciColor,
             shadow: project.shadow,
-            shadowColor: (Color(hex: project.shadow.colorHex) ?? .black).ciColor
+            shadowColor: (Color(hex: project.shadow.colorHex) ?? .black).ciColor,
+            trimRange: trimRange
         )
     }
 }

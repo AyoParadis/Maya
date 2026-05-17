@@ -71,10 +71,34 @@ struct EditorView: View {
                 .keyboardShortcut(.rightArrow, modifiers: .shift)
             Button("") { project.toggleMute() }
                 .keyboardShortcut("m", modifiers: [])
+
+            // Trim shortcuts (Final Cut / iMovie convention).
+            Button("") { markTrimIn() }
+                .keyboardShortcut("i", modifiers: [])
+            Button("") { markTrimOut() }
+                .keyboardShortcut("o", modifiers: [])
+            Button("") { resetTrim() }
+                .keyboardShortcut(.delete, modifiers: .option)
         }
         .opacity(0)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func markTrimIn() {
+        guard project.videoURL != nil else { return }
+        project.setTrimStart(project.currentSeconds)
+    }
+
+    private func markTrimOut() {
+        guard project.videoURL != nil else { return }
+        project.setTrimEnd(project.currentSeconds)
+    }
+
+    private func resetTrim() {
+        guard project.videoURL != nil else { return }
+        project.trimStartTime = 0
+        project.trimEndTime = project.durationSeconds
     }
 
     private func deleteSelectedSegment() {

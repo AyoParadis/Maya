@@ -69,6 +69,16 @@ final class Project {
     var animations: [ZoomSegment] = []
     var selectedAnimationID: ZoomSegment.ID?
 
+    /// In/out points on the source video. Non-destructive: the underlying file is untouched,
+    /// but playback, the playhead, and export all honor this window. `nil` means
+    /// "not yet initialized" (used before a video has loaded). Once a video loads, these
+    /// are set to `(0, videoDuration)`.
+    var trimStartTime: Double = 0
+    var trimEndTime: Double = 0
+
+    /// Minimum length you can trim a clip down to. Mirrors Apple Photos' behavior.
+    static let minTrimDuration: Double = 0.5
+
     var isExporting: Bool = false
     var exportProgress: Double = 0
     var lastExportError: String?
@@ -91,6 +101,35 @@ final class Project {
     var durationSeconds: Double {
         let s = videoDuration.seconds
         return (s.isFinite && s > 0) ? s : 0
+    }
+
+    /// Effective playback/export window. Returns the full video range until a clip is loaded.
+    var trimmedDuration: Double {
+        max(0, trimEndTime - trimStartTime)
+    }
+
+    /// True when the user has trimmed something off either end.
+    var isTrimmed: Bool {
+        guard durationSeconds > 0 else { return false }
+        return trimStartTime > 0.001 || trimEndTime < durationSeconds - 0.001
+    }
+
+    func setTrimStart(_ t: Double) {
+        let maxStart = max(0, trimEndTime - Self.minTrimDuration)
+        trimStartTime = max(0, min(t, maxStart))
+    }
+
+    func setTrimEnd(_ t: Double) {
+        let minEnd = min(durationSeconds, trimStartTime + Self.minTrimDuration)
+        trimEndTime = max(minEnd, min(t, durationSeconds))
+    }
+
+    /// Clamps a time into the trim window, snapping back to `trimStartTime` once we hit the end.
+    func clampedToTrim(_ t: Double) -> Double {
+        guard trimmedDuration > 0 else { return trimStartTime }
+        if t < trimStartTime { return trimStartTime }
+        if t >= trimEndTime { return trimEndTime }
+        return t
     }
 
     func segment(containing time: Double) -> ZoomSegment? {
@@ -142,7 +181,7 @@ final class Project {
 
     func seek(to seconds: Double) {
         guard let player else { return }
-        let clamped = max(0, min(seconds, durationSeconds))
+        let clamped = clampedToTrim(seconds)
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
         currentSeconds = clamped
@@ -173,8 +212,10 @@ final class Project {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
-        ) { [weak newPlayer] _ in
-            newPlayer?.seek(to: .zero)
+        ) { [weak self, weak newPlayer] _ in
+            let target = self?.trimStartTime ?? 0
+            let time = CMTime(seconds: target, preferredTimescale: 600)
+            newPlayer?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
             newPlayer?.play()
         }
 
@@ -187,6 +228,10 @@ final class Project {
         self.videoDuration = duration
         self.player = newPlayer
         self.currentSeconds = 0
+        // Initialize trim to the full clip on every new video.
+        let durSeconds = duration.seconds.isFinite ? duration.seconds : 0
+        self.trimStartTime = 0
+        self.trimEndTime = max(durSeconds, 0)
 
         // Now safe to remove the previous working copy.
         Self.cleanupCachedSource(at: previousURL)
@@ -195,7 +240,16 @@ final class Project {
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
         ) { [weak self] time in
-            self?.currentSeconds = time.seconds
+            guard let self else { return }
+            let t = time.seconds
+            // If the player crosses the trim-out point while playing, snap back to trim-in.
+            if self.trimmedDuration > 0, t >= self.trimEndTime - 0.01 {
+                let target = CMTime(seconds: self.trimStartTime, preferredTimescale: 600)
+                self.player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+                self.currentSeconds = self.trimStartTime
+            } else {
+                self.currentSeconds = t
+            }
         }
 
         newPlayer.play()
@@ -206,6 +260,10 @@ final class Project {
         if player.timeControlStatus == .playing {
             player.pause()
         } else {
+            // If the playhead drifted outside the trim window, snap to trim-in before playing.
+            if currentSeconds < trimStartTime || currentSeconds >= trimEndTime - 0.01 {
+                seek(to: trimStartTime)
+            }
             player.play()
         }
     }
