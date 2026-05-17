@@ -76,4 +76,12 @@ extension Color {
                        blue: ns.blueComponent,
                        alpha: ns.alphaComponent)
     }
+
+    nonisolated var hexString: String {
+        let ns = NSColor(self).usingColorSpace(.sRGB) ?? .black
+        let r = Int(round(ns.redComponent * 255))
+        let g = Int(round(ns.greenComponent * 255))
+        let b = Int(round(ns.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
 }

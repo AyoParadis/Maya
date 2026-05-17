@@ -10,6 +10,14 @@ struct BackgroundPicker: View {
     @State private var gradientSpec: GradientSpec = GradientSpec.presets[0]
     @State private var imageURL: URL?
 
+    // Custom solid editor
+    @State private var customSolidColor: Color = Color(hex: "#6466FA") ?? .indigo
+
+    // Custom gradient editor
+    @State private var customGradientStart: Color = Color(hex: "#6466FA") ?? .indigo
+    @State private var customGradientEnd: Color = Color(hex: "#EC4899") ?? .pink
+    @State private var customGradientAngle: Double = 135
+
     enum Kind: String, CaseIterable, Identifiable {
         case none, solid, gradient, image, videoBlur
         var id: String { rawValue }
@@ -37,7 +45,10 @@ struct BackgroundPicker: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .onChange(of: selectedKind) { _, _ in applySelection() }
-            .onAppear { syncKindFromProject() }
+            .onAppear {
+                syncKindFromProject()
+                seedCustomEditorsFromProject()
+            }
             .onChange(of: project.background) { _, _ in syncKindFromProject() }
 
             Group {
@@ -45,9 +56,9 @@ struct BackgroundPicker: View {
                 case .none:
                     transparencyInfo
                 case .solid:
-                    solidGrid
+                    solidSection
                 case .gradient:
-                    gradientGrid
+                    gradientSection
                 case .image:
                     imagePicker
                 case .videoBlur:
@@ -58,6 +69,8 @@ struct BackgroundPicker: View {
             }
         }
     }
+
+    // MARK: - Transparency
 
     private var transparencyInfo: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -81,13 +94,13 @@ struct BackgroundPicker: View {
         )
     }
 
-    private func syncKindFromProject() {
-        switch project.background {
-        case .none: selectedKind = .none
-        case .solid: selectedKind = .solid
-        case .gradient: selectedKind = .gradient
-        case .image: selectedKind = .image
-        case .videoBlur: selectedKind = .videoBlur
+    // MARK: - Solid
+
+    private var solidSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            solidGrid
+            Divider()
+            customSolidEditor
         }
     }
 
@@ -97,6 +110,7 @@ struct BackgroundPicker: View {
             ForEach(BackgroundOption.defaultSolids, id: \.self) { hex in
                 Button {
                     solidHex = hex
+                    customSolidColor = Color(hex: hex) ?? .black
                     project.background = .solid(hex: hex)
                 } label: {
                     RoundedRectangle(cornerRadius: 6)
@@ -113,12 +127,49 @@ struct BackgroundPicker: View {
         }
     }
 
+    private var customSolidEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Custom").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                ColorPicker("", selection: Binding(
+                    get: { customSolidColor },
+                    set: { newColor in
+                        customSolidColor = newColor
+                        let hex = newColor.hexString
+                        solidHex = hex
+                        project.background = .solid(hex: hex)
+                    }
+                ), supportsOpacity: false)
+                .labelsHidden()
+
+                Text(customSolidColor.hexString)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Gradient
+
+    private var gradientSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            gradientGrid
+            Divider()
+            customGradientEditor
+        }
+    }
+
     private var gradientGrid: some View {
         let columns = [GridItem(.adaptive(minimum: 60), spacing: 10)]
         return LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(Array(GradientSpec.presets.enumerated()), id: \.offset) { idx, spec in
+            ForEach(Array(GradientSpec.presets.enumerated()), id: \.offset) { _, spec in
                 Button {
                     gradientSpec = spec
+                    customGradientStart = spec.startColor
+                    customGradientEnd = spec.endColor
+                    customGradientAngle = spec.angleDegrees
                     project.background = .gradient(spec)
                 } label: {
                     RoundedRectangle(cornerRadius: 8)
@@ -137,6 +188,77 @@ struct BackgroundPicker: View {
         }
     }
 
+    private var customGradientEditor: some View {
+        let customSpec = GradientSpec(
+            startHex: customGradientStart.hexString,
+            endHex: customGradientEnd.hexString,
+            angleDegrees: customGradientAngle
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Custom").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+
+            // Live preview
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [customGradientStart, customGradientEnd],
+                    startPoint: customSpec.startUnitPoint,
+                    endPoint: customSpec.endUnitPoint
+                ))
+                .frame(height: 50)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.white.opacity(0.1), lineWidth: 1)
+                )
+
+            HStack(spacing: 12) {
+                colorWell(label: "Start", binding: $customGradientStart)
+                colorWell(label: "End", binding: $customGradientEnd)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Angle").font(.caption.weight(.medium))
+                    Spacer()
+                    Text("\(Int(customGradientAngle.rounded()))°")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: $customGradientAngle, in: 0...360, step: 1)
+            }
+        }
+        .onChange(of: customGradientStart) { _, _ in pushCustomGradient() }
+        .onChange(of: customGradientEnd) { _, _ in pushCustomGradient() }
+        .onChange(of: customGradientAngle) { _, _ in pushCustomGradient() }
+    }
+
+    private func colorWell(label: String, binding: Binding<Color>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption.weight(.medium))
+            HStack(spacing: 8) {
+                ColorPicker("", selection: binding, supportsOpacity: false)
+                    .labelsHidden()
+                Text(binding.wrappedValue.hexString)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func pushCustomGradient() {
+        let spec = GradientSpec(
+            startHex: customGradientStart.hexString,
+            endHex: customGradientEnd.hexString,
+            angleDegrees: customGradientAngle
+        )
+        gradientSpec = spec
+        project.background = .gradient(spec)
+    }
+
+    // MARK: - Image
+
     private var imagePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let url = imageURL {
@@ -150,6 +272,8 @@ struct BackgroundPicker: View {
         }
     }
 
+    // MARK: - Sync helpers
+
     private var currentSolidHex: String? {
         if case .solid(let hex) = project.background { return hex }
         return nil
@@ -158,6 +282,31 @@ struct BackgroundPicker: View {
     private var currentGradient: GradientSpec? {
         if case .gradient(let s) = project.background { return s }
         return nil
+    }
+
+    private func syncKindFromProject() {
+        switch project.background {
+        case .none: selectedKind = .none
+        case .solid: selectedKind = .solid
+        case .gradient: selectedKind = .gradient
+        case .image: selectedKind = .image
+        case .videoBlur: selectedKind = .videoBlur
+        }
+    }
+
+    /// Seed the ColorPicker / gradient editor controls from whatever is currently
+    /// active on the project, so the user picks up where they left off.
+    private func seedCustomEditorsFromProject() {
+        if case .solid(let hex) = project.background, let c = Color(hex: hex) {
+            customSolidColor = c
+            solidHex = hex
+        }
+        if case .gradient(let spec) = project.background {
+            customGradientStart = spec.startColor
+            customGradientEnd = spec.endColor
+            customGradientAngle = spec.angleDegrees
+            gradientSpec = spec
+        }
     }
 
     private func applySelection() {

@@ -15,9 +15,25 @@ struct FramedDeviceView: View {
         min(canvasSize.width, canvasSize.height)
     }
 
+    /// For `.none` and `.generic` modes we don't have a frame PNG — the "phone
+    /// box" follows the source video's own aspect so playback isn't letterboxed
+    /// inside a fake hull.
+    private var effectiveAspectRatio: CGFloat {
+        switch project.deviceFrame.kind {
+        case .none, .generic:
+            let s = project.videoNaturalSize
+            if s.width > 0 && s.height > 0 {
+                return s.width / s.height
+            }
+            return project.deviceFrame.frameAspectRatio
+        case .physical:
+            return project.deviceFrame.frameAspectRatio
+        }
+    }
+
     private var phoneSize: CGSize {
         let h = canvasSize.height * Self.naturalHeightFraction
-        let w = h * project.deviceFrame.frameAspectRatio
+        let w = h * effectiveAspectRatio
         return CGSize(width: w, height: h)
     }
 
@@ -25,9 +41,28 @@ struct FramedDeviceView: View {
         project.deviceFrame.screenRect(in: phoneSize)
     }
 
+    /// Absolute corner radius (in pt) used to mask the video.
+    private var screenCornerRadius: CGFloat {
+        switch project.deviceFrame.kind {
+        case .physical:
+            return project.deviceFrame.screenCornerRadiusNormalized * phoneSize.width
+        case .none, .generic:
+            return project.bareCornerRadius * min(screenRect.width, screenRect.height)
+        }
+    }
+
     private var screenCornerFraction: CGFloat {
-        let radius = project.deviceFrame.screenCornerRadiusNormalized * phoneSize.width
-        return screenRect.width > 0 ? radius / screenRect.width : 0
+        screenRect.width > 0 ? screenCornerRadius / screenRect.width : 0
+    }
+
+    /// Stroke width for the generic device bezel, scaled with the phone box.
+    /// 0 when the user dialed the slider all the way down.
+    private var bezelWidth: CGFloat {
+        max(0, phoneSize.width * project.bareBezelWidth)
+    }
+
+    private var bezelColor: Color {
+        Color(hex: project.bareBezelHex) ?? .black
     }
 
     private var sampled: AnimationSample {
@@ -50,10 +85,27 @@ struct FramedDeviceView: View {
             .frame(width: screenRect.width, height: screenRect.height)
             .offset(x: screenRect.minX, y: screenRect.minY)
 
-            DeviceFrameOverlay(frame: project.deviceFrame)
-                .frame(width: phoneSize.width, height: phoneSize.height)
+            switch project.deviceFrame.kind {
+            case .physical:
+                DeviceFrameOverlay(frame: project.deviceFrame)
+                    .frame(width: phoneSize.width, height: phoneSize.height)
+            case .generic:
+                if bezelWidth > 0 {
+                    genericBezel
+                }
+            case .none:
+                EmptyView()
+            }
         }
         .frame(width: phoneSize.width, height: phoneSize.height)
+        .shadow(
+            color: project.shadow.enabled
+                ? (Color(hex: project.shadow.colorHex) ?? .black).opacity(project.shadow.opacity)
+                : .clear,
+            radius: project.shadow.enabled ? project.shadow.radius : 0,
+            x: project.shadow.enabled ? project.shadow.offsetX : 0,
+            y: project.shadow.enabled ? project.shadow.offsetY : 0
+        )
         .scaleEffect(s.scale)
         .offset(
             x: s.offsetX * ref,
@@ -71,6 +123,20 @@ struct FramedDeviceView: View {
                 }
                 .onEnded { _ in dragAnchor = nil }
         )
+    }
+
+    /// Stroke positioned so its INNER edge meets the video bounds and the
+    /// stroke grows outward from there — matches the user's "border outside,
+    /// not inside" requirement.
+    private var genericBezel: some View {
+        let w = bezelWidth
+        // Stroked radius is the inner radius + half stroke so the stroke's
+        // inner edge coincides with the video's rounded corner.
+        return RoundedRectangle(cornerRadius: screenCornerRadius + w / 2)
+            .stroke(bezelColor, lineWidth: w)
+            .frame(width: phoneSize.width + w, height: phoneSize.height + w)
+            .offset(x: -w / 2, y: -w / 2)
+            .shadow(color: .black.opacity(0.18), radius: w * 0.6, y: w * 0.2)
     }
 }
 
@@ -97,9 +163,6 @@ struct PlaceholderFrameView: View {
             let bezelRadius = size.width * 0.135
             let screenRect = frame.screenRect(in: size)
             let screenRadius = frame.screenCornerRadius(in: size)
-            let islandWidth = size.width * 0.30
-            let islandHeight = size.width * 0.075
-            let islandY = screenRect.minY + size.width * 0.045
 
             ZStack {
                 RoundedRectangle(cornerRadius: bezelRadius)
@@ -126,11 +189,6 @@ struct PlaceholderFrameView: View {
                     .frame(width: screenRect.width, height: screenRect.height)
                     .position(x: screenRect.midX, y: screenRect.midY)
                     .blendMode(.destinationOut)
-
-                Capsule()
-                    .fill(.black)
-                    .frame(width: islandWidth, height: islandHeight)
-                    .position(x: size.width / 2, y: islandY + islandHeight / 2)
             }
             .compositingGroup()
             .shadow(color: .black.opacity(0.35), radius: size.width * 0.04, x: 0, y: size.width * 0.02)
