@@ -132,7 +132,7 @@ struct ZoomSegment: Identifiable, Hashable, Sendable {
         let transitionIn: Double
         let transitionOut: Double
         let curve: AnimationCurve
-        let symbol: String
+        let previewName: String
 
         func makeSegment(at startTime: Double) -> ZoomSegment {
             ZoomSegment(
@@ -148,15 +148,25 @@ struct ZoomSegment: Identifiable, Hashable, Sendable {
     }
 
     static let presets: [Preset] = [
-        Preset(id: "subtle",     name: "Subtle Pop",  scale: 1.18, focus: .center, duration: 1.6, transitionIn: 0.35, transitionOut: 0.35, curve: .smooth, symbol: "circle.dotted"),
-        Preset(id: "punch",      name: "Quick Punch", scale: 1.45, focus: .center, duration: 1.2, transitionIn: 0.22, transitionOut: 0.22, curve: .snappy, symbol: "bolt.fill"),
-        Preset(id: "dramatic",   name: "Dramatic",    scale: 1.8,  focus: .center, duration: 2.4, transitionIn: 0.55, transitionOut: 0.55, curve: .bouncy, symbol: "flame.fill"),
-        Preset(id: "topFocus",   name: "Top Focus",   scale: 1.5,  focus: .top,    duration: 2.2, transitionIn: 0.45, transitionOut: 0.45, curve: .spring, symbol: "arrow.up.to.line.compact"),
-        Preset(id: "botFocus",   name: "Bottom Focus",scale: 1.5,  focus: .bottom, duration: 2.2, transitionIn: 0.45, transitionOut: 0.45, curve: .spring, symbol: "arrow.down.to.line.compact"),
-        Preset(id: "linger",     name: "Long Hold",   scale: 1.3,  focus: .center, duration: 4.0, transitionIn: 0.55, transitionOut: 0.55, curve: .gentle, symbol: "hourglass"),
-        Preset(id: "mechanical", name: "Mechanical",  scale: 1.5,  focus: .center, duration: 2.0, transitionIn: 0.40, transitionOut: 0.40, curve: .linear, symbol: "gearshape.fill"),
-        Preset(id: "soft",       name: "Soft Reveal", scale: 1.25, focus: .center, duration: 2.6, transitionIn: 0.6, transitionOut: 0.6,   curve: .gentle, symbol: "moon.stars.fill")
+        Preset(id: "punch",    name: "Quick Punch",  scale: 1.45, focus: .center, duration: 1.2, transitionIn: 0.22, transitionOut: 0.22, curve: .snappy, previewName: "quick-punch"),
+        Preset(id: "dramatic", name: "Dramatic",     scale: 1.8,  focus: .center, duration: 2.4, transitionIn: 0.55, transitionOut: 0.55, curve: .bouncy, previewName: "dramatic"),
+        Preset(id: "topFocus", name: "Top Focus",    scale: 1.5,  focus: .top,    duration: 2.2, transitionIn: 0.45, transitionOut: 0.45, curve: .spring, previewName: "top-focus"),
+        Preset(id: "botFocus", name: "Bottom Focus", scale: 1.5,  focus: .bottom, duration: 2.2, transitionIn: 0.45, transitionOut: 0.45, curve: .spring, previewName: "bottom-focus"),
+        Preset(id: "soft",     name: "Soft Reveal",  scale: 1.25, focus: .center, duration: 2.6, transitionIn: 0.6,  transitionOut: 0.6,  curve: .gentle, previewName: "soft-reveal")
     ]
+
+    /// Returns the preset whose timing/scale/focus/curve match the current segment, if any.
+    /// Used to highlight the selected card and offer "Customize" for non-preset states.
+    var matchingPreset: Preset? {
+        ZoomSegment.presets.first { preset in
+            abs(preset.scale - scale) < 0.001 &&
+            preset.focus == focus &&
+            abs(preset.duration - duration) < 0.001 &&
+            abs(preset.transitionIn - transitionIn) < 0.001 &&
+            abs(preset.transitionOut - transitionOut) < 0.001 &&
+            preset.curve == curve
+        }
+    }
 
     mutating func apply(preset: Preset) {
         scale = preset.scale

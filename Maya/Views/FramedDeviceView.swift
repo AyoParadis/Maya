@@ -31,9 +31,17 @@ struct FramedDeviceView: View {
         }
     }
 
+    /// Fits the device inside `naturalHeightFraction` of *both* canvas axes
+    /// while preserving aspect. For portrait devices (iPhone, aspect < 1) the
+    /// height is the binding constraint, matching the previous behavior; for
+    /// landscape devices (MacBook, aspect > 1) the width becomes the constraint
+    /// so the laptop never overflows the canvas.
     private var phoneSize: CGSize {
-        let h = canvasSize.height * Self.naturalHeightFraction
-        let w = h * effectiveAspectRatio
+        let maxH = canvasSize.height * Self.naturalHeightFraction
+        let maxW = canvasSize.width * Self.naturalHeightFraction
+        let aspect = effectiveAspectRatio
+        let w = min(maxW, maxH * aspect)
+        let h = aspect > 0 ? w / aspect : maxH
         return CGSize(width: w, height: h)
     }
 
@@ -81,6 +89,16 @@ struct FramedDeviceView: View {
         let s = sampled
         let ref = offsetReference
         ZStack(alignment: .topLeading) {
+            // 1. Drop shadow caster sitting *behind* the video. We render the
+            //    silhouette in its own layer (a duplicate of the device frame
+            //    PNG, or a rounded rect when no PNG is in play) and attach the
+            //    `.shadow()` only to it. Keeping the shadow off the parent
+            //    ZStack stops SwiftUI from mixing the AVPlayerLayer-hosted
+            //    video into the shadow mask — which used to make the shadow
+            //    look like it was applied on top of the screen content.
+            shadowCaster
+
+            // 2. Video.
             VideoPlayerNSView(
                 player: project.player,
                 cornerRadiusFraction: screenCornerFraction
@@ -88,6 +106,8 @@ struct FramedDeviceView: View {
             .frame(width: screenRect.width, height: screenRect.height)
             .offset(x: screenRect.minX, y: screenRect.minY)
 
+            // 3. Device frame on top of the video so its bezel masks the
+            //    video bleed at the screen edges.
             switch project.deviceFrame.kind {
             case .physical:
                 DeviceFrameOverlay(frame: project.deviceFrame)
@@ -101,14 +121,6 @@ struct FramedDeviceView: View {
             }
         }
         .frame(width: phoneSize.width, height: phoneSize.height)
-        .shadow(
-            color: project.shadow.enabled
-                ? (Color(hex: project.shadow.colorHex) ?? .black).opacity(project.shadow.opacity)
-                : .clear,
-            radius: project.shadow.enabled ? project.shadow.radius : 0,
-            x: project.shadow.enabled ? project.shadow.offsetX : 0,
-            y: project.shadow.enabled ? project.shadow.offsetY : 0
-        )
         .scaleEffect(s.scale)
         .offset(
             x: s.offsetX * ref,
@@ -126,6 +138,40 @@ struct FramedDeviceView: View {
                 }
                 .onEnded { _ in dragAnchor = nil }
         )
+    }
+
+    /// Silhouette used purely to drop a shadow behind the device. Matches the
+    /// visible frame so the halo follows the real outline. The frame PNG is
+    /// drawn again on top in the main ZStack, which hides this copy.
+    @ViewBuilder
+    private var shadowCaster: some View {
+        if project.shadow.enabled, project.shadow.opacity > 0 {
+            let shadowColor = (Color(hex: project.shadow.colorHex) ?? .black)
+                .opacity(project.shadow.opacity)
+            Group {
+                switch project.deviceFrame.kind {
+                case .physical:
+                    DeviceFrameOverlay(frame: project.deviceFrame)
+                        .frame(width: phoneSize.width, height: phoneSize.height)
+                case .generic:
+                    RoundedRectangle(cornerRadius: screenCornerRadius + bezelWidth / 2)
+                        .fill(Color.black)
+                        .frame(width: phoneSize.width + bezelWidth, height: phoneSize.height + bezelWidth)
+                        .offset(x: -bezelWidth / 2, y: -bezelWidth / 2)
+                case .none:
+                    RoundedRectangle(cornerRadius: screenCornerRadius)
+                        .fill(Color.black)
+                        .frame(width: screenRect.width, height: screenRect.height)
+                        .offset(x: screenRect.minX, y: screenRect.minY)
+                }
+            }
+            .shadow(
+                color: shadowColor,
+                radius: project.shadow.radius,
+                x: project.shadow.offsetX,
+                y: project.shadow.offsetY
+            )
+        }
     }
 
     /// Stroke positioned so its INNER edge meets the video bounds and the

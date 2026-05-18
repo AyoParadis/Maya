@@ -5,22 +5,33 @@ struct AnimationEditorPanel: View {
     let segmentID: ZoomSegment.ID
     let onDismiss: () -> Void
 
+    @State private var isCustomizing = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     if let binding = segmentBinding() {
                         presetsSection(binding: binding)
-                        Divider()
-                        timingSection(binding: binding)
-                        Divider()
-                        zoomSection(binding: binding)
-                        Divider()
-                        curveSection(binding: binding)
-                        Divider()
-                        focusSection(binding: binding)
+
+                        customizeToggle(binding: binding)
+
+                        if isCustomizing {
+                            VStack(alignment: .leading, spacing: 20) {
+                                Divider()
+                                timingSection(binding: binding)
+                                Divider()
+                                zoomSection(binding: binding)
+                                Divider()
+                                curveSection(binding: binding)
+                                Divider()
+                                focusSection(binding: binding)
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
                         Divider()
                         actionsSection
                     } else {
@@ -54,12 +65,19 @@ struct AnimationEditorPanel: View {
 
     // MARK: - Presets
     private func presetsSection(binding: Binding<ZoomSegment>) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let activePreset = binding.wrappedValue.matchingPreset
+        // Two fixed columns — the panel is 340pt wide, padding eats 32pt and the
+        // 10pt gap leaves ~298pt for content. `flexible` lets each cell take
+        // half regardless of the preview's intrinsic size.
+        let columns = [
+            GridItem(.flexible(), spacing: 8),
+            GridItem(.flexible(), spacing: 8)
+        ]
+        return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Presets")
-            let columns = [GridItem(.adaptive(minimum: 130), spacing: 10)]
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(ZoomSegment.presets) { preset in
-                    PresetCard(preset: preset) {
+                    PresetCard(preset: preset, isSelected: activePreset?.id == preset.id) {
                         var d = binding.wrappedValue
                         d.apply(preset: preset)
                         binding.wrappedValue = d
@@ -67,6 +85,47 @@ struct AnimationEditorPanel: View {
                 }
             }
         }
+    }
+
+    // MARK: - Customize toggle
+    private func customizeToggle(binding: Binding<ZoomSegment>) -> some View {
+        let activePreset = binding.wrappedValue.matchingPreset
+        let title: String = {
+            if isCustomizing { return "Hide custom settings" }
+            if let p = activePreset { return "Customize \(p.name)" }
+            return "Customize this preset"
+        }()
+        let symbol = isCustomizing ? "chevron.up" : "slider.horizontal.3"
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isCustomizing.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .rotationEffect(.degrees(isCustomizing ? 90 : 0))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.gray.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+            .foregroundStyle(Color.primary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Timing
@@ -266,42 +325,47 @@ struct AnimationEditorPanel: View {
 
 private struct PresetCard: View {
     let preset: ZoomSegment.Preset
+    let isSelected: Bool
     let onSelect: () -> Void
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: preset.symbol)
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(preset.name).font(.callout.weight(.semibold))
+            VStack(alignment: .leading, spacing: 0) {
+                LoopingVideoView(resourceName: preset.previewName)
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black)
+
+                HStack(spacing: 4) {
+                    Text(preset.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
                 }
-                HStack(spacing: 8) {
-                    Text(String(format: "%.1f×", preset.scale))
-                    Text("·")
-                    Text(String(format: "%.1fs", preset.duration))
-                }
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#818CF8") ?? .indigo,
-                        Color(hex: "#6466FA") ?? .indigo
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    isSelected
+                        ? (Color(hex: "#6466FA") ?? .accentColor)
+                        : Color.gray.opacity(0.12)
                 )
-            )
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isSelected
+                            ? (Color(hex: "#6466FA") ?? .accentColor)
+                            : Color.gray.opacity(0.2),
+                        lineWidth: isSelected ? 2 : 1
+                    )
             )
         }
         .buttonStyle(.plain)
