@@ -171,7 +171,31 @@ extension DeviceModel {
         symbol: "iphone"
     )
 
-    static let all: [DeviceModel] = [.none, .generic, .iPhone17Pro, .iPhone16Pro, .iPhone15Pro]
+    /// MacBook Pro 14": 1216×735 PNG. The transparent screen hole is 966×628
+    /// at (125, 18) but its edge has a 1px anti-aliased gradient, so we bleed
+    /// the video rect 3px outward on every side (→ 972×634 at (122, 15)). The
+    /// frame PNG sits on top of the video in the ZStack and hides the bleed,
+    /// while killing the background sliver that used to peek through.
+    static let macBookPro14 = DeviceModel(
+        id: "macbook-pro-14",
+        displayName: "MacBook Pro 14",
+        frameAspectRatio: 1216.0 / 735.0,
+        screenRectNormalized: CGRect(
+            x: 122.0 / 1216.0,
+            y: 15.0 / 735.0,
+            width: 972.0 / 1216.0,
+            height: 634.0 / 735.0
+        ),
+        screenCornerRadiusNormalized: 10.0 / 1216.0,
+        colors: [
+            DeviceColor(id: "silver", name: "Silver",
+                        imageName: "MacBook Pro 14", swatchHex: "#C9CCD0")
+        ],
+        kind: .physical,
+        symbol: "laptopcomputer"
+    )
+
+    static let all: [DeviceModel] = [.none, .generic, .iPhone17Pro, .iPhone16Pro, .iPhone15Pro, .macBookPro14]
 
     static func model(id: String) -> DeviceModel? {
         all.first { $0.id == id }

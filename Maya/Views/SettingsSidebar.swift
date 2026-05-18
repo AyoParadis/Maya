@@ -292,47 +292,37 @@ struct SettingsSidebar: View {
             Text("Export")
                 .font(.headline)
 
-            Button {
-                onExport()
-            } label: {
-                Label(exportButtonLabel, systemImage: exportButtonIcon)
-                    .frame(maxWidth: .infinity)
-            }
-            .controlSize(.large)
-            .disabled(project.videoURL == nil || project.isExporting)
-
-            Text(exportHint)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if project.isExporting {
-                ProgressView(value: project.exportProgress)
-                Text(String(format: "Exporting… %.0f%%", project.exportProgress * 100))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ExportCardButton(
+                title: exportButtonTitle,
+                subtitle: exportSubtitle,
+                icon: exportButtonIcon,
+                isEnabled: project.videoURL != nil && !project.isExporting,
+                isExporting: project.isExporting,
+                progress: project.exportProgress,
+                action: onExport
+            )
         }
     }
 
-    private var exportButtonLabel: String {
-        project.background.isTransparent
-            ? "Export transparent (.mov)"
-            : "Export video (.mp4)"
+    private var exportButtonTitle: String {
+        project.background.isTransparent ? "Export transparent" : "Export video"
     }
 
     private var exportButtonIcon: String {
         project.background.isTransparent
-            ? "square.and.arrow.down.on.square"
-            : "square.and.arrow.down"
+            ? "square.and.arrow.down.on.square.fill"
+            : "square.and.arrow.down.fill"
     }
 
-    private var exportHint: String {
+    /// One-line subtitle shown under the export title. Pieces are joined with
+    /// middle dots so it stays readable without breaking onto two rows.
+    private var exportSubtitle: String {
         let size = project.canvasAspect.renderSize
         let dims = "\(Int(size.width))×\(Int(size.height))"
-        return project.background.isTransparent
-            ? "\(dims) HEVC + alpha. Drop it over anything in AVPlayer / AVKit."
-            : "\(dims) H.264 · \(project.canvasAspect.shortLabel)."
+        let pieces: [String] = project.background.isTransparent
+            ? [dims, "HEVC + α", "MOV"]
+            : [dims, "H.264", "MP4"]
+        return pieces.joined(separator: " · ")
     }
 
     private func openVideoPicker() {
@@ -358,11 +348,15 @@ struct SettingsSidebar: View {
 }
 
 private extension DeviceModel {
-    /// Short label for the picker chip — "15 Pro" reads cleaner than the full
-    /// name. Non-iPhone entries keep their displayName as-is.
+    /// Short label for the picker chip. Strips/abbreviates the product family
+    /// so chips fit in the narrow row: "iPhone 15 Pro" → "15 Pro",
+    /// "MacBook Pro 14" → "M Pro 14".
     var shortName: String {
         if displayName.hasPrefix("iPhone ") {
             return String(displayName.dropFirst("iPhone ".count))
+        }
+        if displayName.hasPrefix("MacBook ") {
+            return "M " + displayName.dropFirst("MacBook ".count)
         }
         return displayName
     }
@@ -484,5 +478,136 @@ private struct AspectRatioChip: View {
         }
         .buttonStyle(.plain)
         .help(aspect.displayName)
+    }
+}
+
+// MARK: - Export card
+
+/// Full-bleed export button styled as a tinted card. Doubles as the progress
+/// surface while the export is running so the layout doesn't reflow.
+private struct ExportCardButton: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let isEnabled: Bool
+    let isExporting: Bool
+    let progress: Double
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    private var accent: Color { Color(hex: "#6466FA") ?? .accentColor }
+    private var accentDark: Color { Color(hex: "#4F46E5") ?? accent }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(isEnabled ? 1.0 : 0.45),
+                                accentDark.opacity(isEnabled ? 1.0 : 0.45)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(isEnabled ? 0.22 : 0.08), lineWidth: 1)
+                    )
+                    .shadow(
+                        color: accent.opacity(isEnabled && isHovering ? 0.45 : 0.25),
+                        radius: isHovering ? 14 : 8,
+                        x: 0,
+                        y: isHovering ? 6 : 4
+                    )
+
+                if isExporting {
+                    progressContent
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                } else {
+                    idleContent
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+            .animation(.easeOut(duration: 0.2), value: isExporting)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .onHover { hovering in
+            isHovering = hovering && isEnabled
+        }
+        .help(isEnabled ? "Render and save the video" : "Load a video to enable export")
+    }
+
+    private var idleContent: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 30, height: 30)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "arrow.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.75))
+                .offset(x: isHovering ? 3 : 0)
+        }
+    }
+
+    private var progressContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+                    .tint(.white)
+                Text("Exporting")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
+                Text(String(format: "%.0f%%", max(0, min(1, progress)) * 100))
+                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.22))
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(4, g.size.width * CGFloat(max(0, min(1, progress)))))
+                }
+            }
+            .frame(height: 6)
+        }
     }
 }

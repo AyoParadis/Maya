@@ -126,8 +126,13 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
                 return instruction.deviceFrame.frameAspectRatio
             }
         }()
-        let naturalPhoneHeight = renderSize.height * instruction.naturalHeightFraction
-        let naturalPhoneWidth = naturalPhoneHeight * effectiveAspect
+        // Fit the device within `naturalHeightFraction` of both axes so a
+        // landscape device (MacBook, aspect > 1) does not overflow the canvas.
+        // Matches `FramedDeviceView.phoneSize`.
+        let maxH = renderSize.height * instruction.naturalHeightFraction
+        let maxW = renderSize.width * instruction.naturalHeightFraction
+        let naturalPhoneWidth = min(maxW, maxH * effectiveAspect)
+        let naturalPhoneHeight = effectiveAspect > 0 ? naturalPhoneWidth / effectiveAspect : maxH
         let phoneHeight = naturalPhoneHeight * effectiveScale
         let phoneWidth = naturalPhoneWidth * effectiveScale
 
