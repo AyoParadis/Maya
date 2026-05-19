@@ -74,7 +74,7 @@ This fork intentionally differs from the upstream app. The project folder and Xc
 
 ## Requirements
 
-- macOS 26.3 or later
+- macOS 26.2 or later
 - Xcode 26.5 or later
 - `.mp4` or `.mov` screen recording
 
