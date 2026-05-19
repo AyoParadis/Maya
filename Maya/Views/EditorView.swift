@@ -45,7 +45,7 @@ struct EditorView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: project.selectedAnimationID)
         }
-        .navigationTitle("Maya")
+        .navigationTitle("Maya Studio")
         .onChange(of: project.videoURL) { _, _ in updateBlurPoster() }
         .onChange(of: project.background) { _, _ in updateBlurPoster() }
     }
@@ -72,10 +72,41 @@ struct EditorView: View {
                 .keyboardShortcut(.rightArrow, modifiers: .shift)
             Button("") { project.toggleMute() }
                 .keyboardShortcut("m", modifiers: [])
+
+            // Trim shortcuts (Final Cut / iMovie convention).
+            Button("") { markTrimIn() }
+                .keyboardShortcut("i", modifiers: [])
+            Button("") { markTrimOut() }
+                .keyboardShortcut("o", modifiers: [])
+            Button("") { resetTrim() }
+                .keyboardShortcut(.delete, modifiers: .option)
         }
         .opacity(0)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func markTrimIn() {
+        guard project.videoURL != nil else { return }
+        // currentSeconds is in timeline coords; convert to source for the trim handle, and
+        // anchor the clip's right edge so the trim doesn't push the rest of the clip around.
+        let newSource = project.timelineToSource(project.currentSeconds)
+        let delta = newSource - project.trimStartTime
+        project.setTrimStart(newSource)
+        project.clipTimelineStart += delta
+    }
+
+    private func markTrimOut() {
+        guard project.videoURL != nil else { return }
+        let newSource = project.timelineToSource(project.currentSeconds)
+        project.setTrimEnd(newSource)
+    }
+
+    private func resetTrim() {
+        guard project.videoURL != nil else { return }
+        project.trimStartTime = 0
+        project.trimEndTime = project.durationSeconds
+        project.clipTimelineStart = 0
     }
 
     private func deleteSelectedSegment() {
@@ -132,7 +163,7 @@ struct EditorView: View {
 
     private func runExport() {
         let isTransparent = project.background.isTransparent
-        let suggestedName = isTransparent ? "Maya-export.mov" : "Maya-export.mp4"
+        let suggestedName = isTransparent ? "Maya-Studio-export.mov" : "Maya-Studio-export.mp4"
         let types: [UTType] = isTransparent ? [.quickTimeMovie] : [.mpeg4Movie]
 
         runSavePanel(suggestedName: suggestedName, allowedTypes: types) { url in
