@@ -3,28 +3,42 @@
 
   # Maya Studio
 
-  **A fork of Maya tuned for polished product videos, richer device framing, timeline trimming, and faster App Store / social exports.**
+  **A diverged fork of Maya, released as Maya Studio, for polished product videos, richer device framing, timeline trimming, and App Store / social exports.**
 
   Native macOS editor for turning screen recordings into framed, animated marketing clips with zoom moments, trim controls, preset previews, and transparent or social-ready exports.
+
+  Current release: **Maya Studio 1.0.5**
 
   ![Maya Studio screenshot](docs/screenshot.png)
 </div>
 
 ---
 
-## What changed in this version
+## About This Fork
 
-Maya Studio keeps the original Maya foundation, then adds a more opinionated editor workflow:
+This repository started from [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya), but this version has intentionally diverged. The app is now user-facing as **Maya Studio** and ships under the bundle identifier `com.dlmapps.MayaStudio`.
 
-- Expanded canvas presets for square, vertical, portrait social, landscape, and widescreen exports.
-- More flexible device catalog: physical iPhone Pro frames, MacBook Pro 14, generic phone, classic phone, Android-style phone, tablet, laptop, and no-frame modes.
-- Generic/no-frame controls for corner radius, bezel width, bezel color, and shadows.
-- Timeline-first editing with draggable zoom segments, edge resizing, playhead snapping, and inline editing.
-- Video trim controls with independent clip timeline position, so trimming the source and moving the clip are separate actions.
-- Animation preset previews bundled into the app.
-- App Store and marketing-focused output polish, including transparent HEVC-with-alpha export.
+Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target. That is deliberate: the product name, display name, export naming, bundle identifier, and README identify this fork as **Maya Studio**, while the project layout stays stable to avoid unnecessary churn.
 
-This fork intentionally differs from the upstream app. The project folder and Xcode target still use the existing `Maya` source layout to avoid noisy churn, but the app product and user-facing name are **Maya Studio**.
+## How Maya Studio Deviates From Upstream
+
+Maya Studio keeps the original Maya foundation, then adds a more opinionated product-video workflow:
+
+| Area | Upstream Maya | Maya Studio |
+|---|---|---|
+| App identity | Maya | Maya Studio |
+| Bundle ID | `com.dlmapps.Maya` | `com.dlmapps.MayaStudio` |
+| Release line | Original upstream releases | Fork release line, currently `v1.0.5` |
+| Minimum macOS | Upstream project target | macOS 26.2+ so the app launches on this Mac |
+| Device framing | iPhone-focused physical frames | iPhone Pro frames, MacBook Pro 14, generic phone, classic phone, Android-style phone, tablet, laptop, and no-frame modes |
+| Canvas workflow | Basic framed recording exports | Square, vertical, portrait social, landscape, and widescreen export presets |
+| Generic/no-frame controls | Limited | Corner radius, bezel width, bezel color, and shadows |
+| Timeline | Zoom animation timeline | Zoom timeline plus draggable clip trimming and independent clip timeline positioning |
+| Animation editing | Modal/sheet-driven editing | Inline side-panel editing with live canvas updates |
+| Presets | Text preset choices | Bundled animation preset preview videos |
+| Export focus | Framed video export | Social-ready MP4 plus transparent HEVC-with-alpha MOV export |
+
+The merge from upstream was selective. Maya Studio includes upstream's useful trim, timeline, preset preview, MacBook frame, and export improvements, while preserving this fork's expanded device catalog and shared wide-frame fitting behavior.
 
 ## Features
 
@@ -78,6 +92,14 @@ This fork intentionally differs from the upstream app. The project folder and Xc
 - Xcode 26.5 or later
 - `.mp4` or `.mov` screen recording
 
+## Releases
+
+The latest installable app for this fork is **Maya Studio 1.0.5**:
+
+[Download Maya Studio 1.0.5](https://github.com/AyoParadis/Maya/releases/tag/v1.0.5)
+
+Release artifacts are ad-hoc signed when built locally on this machine because the configured Mac Development certificate is not installed here.
+
 ## Build and run
 
 ```bash
@@ -104,7 +126,7 @@ Maya/
 
 ## Upstream
 
-Maya Studio is derived from [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya). Upstream remains the source for the original app direction; this fork carries additional editor, device, canvas, and export workflow changes.
+Maya Studio is derived from [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya). Upstream remains the source for the original app direction; this fork carries additional editor, device, canvas, timeline, naming, and export workflow changes.
 
 ## License
 
