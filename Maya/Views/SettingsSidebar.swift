@@ -6,11 +6,27 @@ import UniformTypeIdentifiers
 struct SettingsSidebar: View {
     @Bindable var project: Project
     let onExport: () -> Void
+    let onOpenAIDirector: () -> Void
+    let onCreateAIVideo: () -> Void
+    let onExportAIBundle: () -> Void
+    let onImportAIPlan: () -> Void
+    let aiDirectorMessage: AIDirectorMessage?
+    let isRunningAIDirector: Bool
+    let aiDirectorStatus: AIDirectorStatus
+    let isAIDirectorPanelVisible: Bool
+
+    @State private var showAdvancedAIDirector = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                appVersionSection
+                Divider()
                 videoSection
+                if project.videoURL != nil {
+                    Divider()
+                    aiDirectorSection
+                }
                 Divider()
                 canvasSection
                 Divider()
@@ -35,6 +51,26 @@ struct SettingsSidebar: View {
         }
         .scrollIndicators(.visible)
         .frame(minWidth: 320, idealWidth: 360)
+    }
+
+    private var appVersionSection: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Maya AI Studio")
+                .font(.headline)
+            Spacer()
+            Text(appVersionLabel)
+                .font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var appVersionLabel: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        if let build, !build.isEmpty {
+            return "v\(version) (\(build))"
+        }
+        return "v\(version)"
     }
 
     private var deviceSection: some View {
@@ -293,6 +329,86 @@ struct SettingsSidebar: View {
                 action: onExport
             )
         }
+    }
+
+    private var aiDirectorSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("AI Director")
+                    .font(.headline)
+                Spacer()
+                aiStatusBadge
+            }
+
+            Label(aiDirectorStatus.isWorking ? aiDirectorStatus.workingTitle : "Local Codex", systemImage: aiDirectorStatus.isWorking ? "wand.and.stars" : "terminal")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(aiDirectorStatus == .failed ? .red : .secondary)
+
+            if !isAIDirectorPanelVisible {
+                Button {
+                    onCreateAIVideo()
+                } label: {
+                    Label(aiDirectorStatus.isWorking ? "Creating video..." : "Create video", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .disabled(isRunningAIDirector)
+
+                Button {
+                    onOpenAIDirector()
+                } label: {
+                    Label("Open director", systemImage: "sidebar.trailing")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(isRunningAIDirector)
+            }
+
+            DisclosureGroup("Advanced", isExpanded: $showAdvancedAIDirector) {
+                HStack(spacing: 8) {
+                    Button {
+                        onExportAIBundle()
+                    } label: {
+                        Label("Export bundle", systemImage: "shippingbox.and.arrow.backward")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(isRunningAIDirector)
+
+                    Button {
+                        onImportAIPlan()
+                    } label: {
+                        Label("Import plan", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(isRunningAIDirector)
+                }
+                .padding(.top, 6)
+            }
+            .font(.caption.weight(.medium))
+
+            if let aiDirectorMessage, !isAIDirectorPanelVisible {
+                Label {
+                    Text(aiDirectorMessage.text)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: aiDirectorMessage.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                }
+                .foregroundStyle(aiDirectorMessage.kind == .success ? .green : .red)
+            }
+        }
+    }
+
+    private var aiStatusBadge: some View {
+        Text(aiDirectorStatus.label)
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(aiDirectorStatus == .failed ? Color.red : Color.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(aiDirectorStatus == .failed ? Color.red.opacity(0.10) : Color.gray.opacity(0.12))
+            )
     }
 
     private var exportButtonTitle: String {

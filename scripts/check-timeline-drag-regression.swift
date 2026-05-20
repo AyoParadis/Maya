@@ -58,6 +58,37 @@ if !gridSnappingClosures.isEmpty {
     exit(1)
 }
 
+let projectCommittingClosures = liveDragClosures.filter { $0.text.contains("onChange(") }
+if !projectCommittingClosures.isEmpty {
+    let locations = projectCommittingClosures.map { "\($0.startLine)" }.joined(separator: ", ")
+    fputs(
+        "Timeline drag regression: live .onChanged handlers must render local previews, " +
+            "not commit Project.animations updates. Lines: \(locations)\n",
+        stderr
+    )
+    exit(1)
+}
+
+let projectResolvingClosures = liveDragClosures.filter { $0.text.contains("resolveChange(") }
+if !projectResolvingClosures.isEmpty {
+    let locations = projectResolvingClosures.map { "\($0.startLine)" }.joined(separator: ", ")
+    fputs(
+        "Timeline drag regression: live .onChanged handlers must not resolve model placement. " +
+            "Clamp locally while dragging and resolve only on release. Lines: \(locations)\n",
+        stderr
+    )
+    exit(1)
+}
+
+let usesRenderOffsetForDrag = source.contains(".offset(x: startX, y: 6)")
+if !usesRenderOffsetForDrag {
+    fputs(
+        "Timeline drag regression: segment movement should use render offset, not center-position layout.\n",
+        stderr
+    )
+    exit(1)
+}
+
 let preservesContinuousResize =
     source.contains("resize(.leading, translation: translation, snapToGrid: false)") &&
     source.contains("resize(.trailing, translation: translation, snapToGrid: false)") &&

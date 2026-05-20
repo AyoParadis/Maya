@@ -1,27 +1,48 @@
 <div align="center">
-  <img src="docs/icon.png" width="128" height="128" alt="Maya Studio app icon" />
+  <img src="docs/icon.png" width="128" height="128" alt="Maya AI Studio app icon" />
 
-  # Maya Studio
+  # Maya AI Studio
 
-  **Turn screen recordings into polished framed product videos with trimming, zoom animations, device mockups, and social-ready exports.**
+  **Turn screen recordings into polished product videos with AI Director, subtle zoom automation, device mockups, and social-ready exports.**
 
-  Native macOS editor for turning screen recordings into framed, animated marketing clips with zoom moments, trim controls, preset previews, and transparent or social-ready exports.
+  Native macOS editor for turning screen recordings into framed, animated launch clips. AI Director can analyze a recording through your local Codex CLI, generate a behavioral-science-informed edit plan, preview the result in-app, and leave export as your final explicit step.
 
-  Current release: **Maya Studio 1.0.6**
+  Current release: **Maya AI Studio 1.0.7**
 
-  ![Maya Studio screenshot](docs/screenshot.png)
+  ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
 
 ---
 
-## Maya Studio
+## Maya AI Studio
 
-Maya Studio is its own product and release line. It is designed for makers, designers, and app teams who need to turn raw screen recordings into launch videos, App Store assets, social clips, demos, and transparent overlays without moving through a heavy video editor.
+Maya AI Studio is its own product and release line. It is designed for makers, designers, and app teams who need to turn raw screen recordings into launch videos, App Store assets, social clips, demos, and transparent overlays without moving through a heavy video editor.
 
-The built app is named **Maya Studio**, uses the bundle identifier `com.dlmapps.MayaStudio`, and follows the Maya Studio release line. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target. That is deliberate: the public product name changed while the project layout stayed stable.
+The built app is named **Maya AI Studio**, uses the bundle identifier `com.dlmapps.MayaAIStudio`, and follows the Maya AI Studio release line. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target. That is deliberate: the public product name changed while the project layout stayed stable.
 
-## What Maya Studio Adds
+## AI Director
 
+AI Director is the main new workflow in Maya AI Studio. Load a recording, choose **Create video**, and Maya builds a local analysis bundle, asks your installed Codex CLI for an edit plan, validates it, applies trim and zoom edits, and starts an in-app preview. You can adjust the direction controls, add revision notes, retry, compare plan versions, apply older or newer versions, and export only when you are happy with the result.
+
+AI Director is intentionally non-destructive in v1. It only changes the selected trim range and zoom segments. Canvas, device frame, background, shadows, styling, and export settings remain under your control.
+
+### Local Codex requirement
+
+AI Director uses your **local Codex CLI**. Maya sends sampled frames and project metadata to the locally installed `codex` command, and usage is tied to your local Codex login or subscription. Maya does not ask for API keys, does not use a Maya-hosted AI service, and does not upload the full video file from the app.
+
+Install and sign in before using AI Director:
+
+```bash
+codex login
+```
+
+If Codex is unavailable or the generated plan fails validation, Maya shows an actionable error and can offer a local heuristic fallback so you can still create a draft edit.
+
+## What Maya AI Studio Adds
+
+- AI Director for local-Codex edit planning, editable retries, plan version history, preview, and fallback generation.
+- Behavioral-science defaults for short social demos: early hook, dead-time removal, clear problem/action/result arc, soft attention cues, and outcome-focused endings.
+- Calm AI zoom profiles, including **Barely There** motion for premium, understated product demos.
 - A broader device catalog with iPhone Pro frames, MacBook Pro 14, generic phone, classic phone, Android-style phone, tablet, laptop, and no-frame modes.
 - Canvas presets for square, vertical, portrait social, landscape, and widescreen exports.
 - Generic and no-frame styling controls for corner radius, bezel width, bezel color, and shadows.
@@ -47,6 +68,14 @@ The built app is named **Maya Studio**, uses the bundle identifier `com.dlmapps.
 - Drag zoom blocks to move them and drag their edges to resize them.
 - Snap animation timing to quarter-second marks and the playhead.
 - Tune scale, focus, duration, easing, and zoom-in/out timing from the side editor.
+
+### AI-assisted editing
+
+- Generate a social-demo edit plan through the local Codex CLI.
+- Review rationale, hook score, clarity score, pacing score, trim range, zoom count, and warnings.
+- Refine with target length, pacing, zoom intensity, opening hook strength, ending emphasis, and revision notes.
+- Retry without losing prior versions, compare generated plans, and apply the version that fits best.
+- Keep AI output constrained to trim and zoom edits, with safety clamping for calm/subtle motion.
 
 ### Export
 
@@ -81,12 +110,14 @@ The built app is named **Maya Studio**, uses the bundle identifier `com.dlmapps.
 - macOS 26.2 or later
 - Xcode 26.5 or later
 - `.mp4` or `.mov` screen recording
+- Codex CLI installed and signed in for AI Director generation
+- A Codex account/subscription for local Codex CLI usage
 
 ## Releases
 
-The latest installable Maya Studio release is **Maya Studio 1.0.6**:
+The latest installable Maya AI Studio release is **Maya AI Studio 1.0.7**:
 
-[Download Maya Studio 1.0.6](https://github.com/AyoParadis/Maya/releases/tag/v1.0.6)
+[Download Maya AI Studio 1.0.7](https://github.com/AyoParadis/Maya/releases/tag/v1.0.7)
 
 Release artifacts are ad-hoc signed when built locally on this machine because the configured Mac Development certificate is not installed here.
 
@@ -98,7 +129,7 @@ cd Maya
 open Maya.xcodeproj
 ```
 
-Run the `Maya` target in Xcode. The built app is named **Maya Studio**.
+Run the `Maya` target in Xcode. The built app is named **Maya AI Studio**.
 
 ## Code map
 
@@ -116,7 +147,7 @@ Maya/
 
 ## Origins
 
-Maya Studio began as a fork of [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya). This project now follows its own product direction and release cadence, while keeping attribution to the original project history.
+Maya AI Studio began as a fork of [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya). This project now follows its own product direction and release cadence, while keeping attribution to the original project history.
 
 ## License
 

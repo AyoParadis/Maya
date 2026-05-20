@@ -43,18 +43,21 @@ actor VideoThumbnailGenerator {
         generator.requestedTimeToleranceBefore = .positiveInfinity
         generator.requestedTimeToleranceAfter = .positiveInfinity
 
-        let times: [NSValue] = (0..<key.count).map { i in
+        let timeSeconds: [Double] = (0..<key.count).map { i in
             let frac = Double(i) / Double(max(key.count - 1, 1))
-            let seconds = frac * duration.seconds
-            return NSValue(time: CMTime(seconds: seconds, preferredTimescale: 600))
+            return frac * duration.seconds
         }
+        let times = timeSeconds.map { NSValue(time: CMTime(seconds: $0, preferredTimescale: 600)) }
 
         return await withCheckedContinuation { continuation in
             var results: [Int: NSImage] = [:]
             var completed = 0
             let total = times.count
             generator.generateCGImagesAsynchronously(forTimes: times) { requested, cgImage, _, _, _ in
-                let idx = times.firstIndex(where: { $0.timeValue == requested }) ?? 0
+                let requestedSeconds = requested.seconds
+                let idx = timeSeconds.enumerated().min {
+                    abs($0.element - requestedSeconds) < abs($1.element - requestedSeconds)
+                }?.offset ?? 0
                 if let cg = cgImage {
                     let size = NSSize(width: CGFloat(cg.width), height: CGFloat(cg.height))
                     results[idx] = NSImage(cgImage: cg, size: size)

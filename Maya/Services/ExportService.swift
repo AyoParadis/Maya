@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import CoreMedia
@@ -7,6 +7,10 @@ import SwiftUI
 import VideoToolbox
 
 actor ExportService {
+    private struct UnsafeSendableBox<Value>: @unchecked Sendable {
+        let value: Value
+    }
+
     struct Snapshot: @unchecked Sendable {
         /// Already inside the app's sandbox container — no security-scope dance required.
         let sourceVideoURL: URL
@@ -135,9 +139,6 @@ actor ExportService {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 progress(Double(session.progress))
-                if session.status == .completed || session.status == .failed || session.status == .cancelled {
-                    return
-                }
             }
         }
         defer { progressTask.cancel() }
@@ -307,9 +308,15 @@ actor ExportService {
     ) async throws {
         let queue = DispatchQueue(label: "maya.export.video", qos: .userInitiated)
         let state = ContinuationGuard<Void>()
+        let outputBox = UnsafeSendableBox(value: output)
+        let inputBox = UnsafeSendableBox(value: input)
+        let adaptorBox = UnsafeSendableBox(value: adaptor)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state.continuation = continuation
-            input.requestMediaDataWhenReady(on: queue) {
+            inputBox.value.requestMediaDataWhenReady(on: queue) {
+                let output = outputBox.value
+                let input = inputBox.value
+                let adaptor = adaptorBox.value
                 while input.isReadyForMoreMediaData {
                     guard let sample = output.copyNextSampleBuffer() else {
                         input.markAsFinished()
@@ -341,9 +348,13 @@ actor ExportService {
     ) async throws {
         let queue = DispatchQueue(label: "maya.export.audio", qos: .userInitiated)
         let state = ContinuationGuard<Void>()
+        let outputBox = UnsafeSendableBox(value: output)
+        let inputBox = UnsafeSendableBox(value: input)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state.continuation = continuation
-            input.requestMediaDataWhenReady(on: queue) {
+            inputBox.value.requestMediaDataWhenReady(on: queue) {
+                let output = outputBox.value
+                let input = inputBox.value
                 while input.isReadyForMoreMediaData {
                     guard let sample = output.copyNextSampleBuffer() else {
                         input.markAsFinished()

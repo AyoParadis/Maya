@@ -6,6 +6,7 @@ struct AnimationsTrack: View {
     let onSelectSegment: (ZoomSegment) -> Void
 
     @State private var hoverX: CGFloat?
+    @State private var activeSegmentDragID: ZoomSegment.ID?
     /// Set by a SegmentBlock during drag when its snapped time matches the playhead.
     /// We render a vertical guide line at that x coordinate as long as it is set.
     @State private var snapGuideX: CGFloat?
@@ -39,8 +40,13 @@ struct AnimationsTrack: View {
                         trackWidth: width,
                         totalDuration: duration,
                         clipDisplayOffset: clipDisplayOffset,
+                        sourceRange: project.trimStartTime...project.trimEndTime,
+                        blockedSegments: project.animations.filter { $0.id != segment.id },
                         playheadTime: project.currentSeconds,
                         height: height - 12,
+                        resolveChange: { candidate in
+                            project.nonOverlappingZoomSegment(candidate, excluding: segment.id)
+                        },
                         onTap: {
                             project.selectedAnimationID = segment.id
                             onSelectSegment(segment)
@@ -55,6 +61,9 @@ struct AnimationsTrack: View {
                             } else {
                                 snapGuideX = nil
                             }
+                        },
+                        onDragActivityChanged: { isDragging in
+                            activeSegmentDragID = isDragging ? segment.id : nil
                         }
                     )
                 }
@@ -69,14 +78,15 @@ struct AnimationsTrack: View {
                         .transition(.opacity)
                 }
 
-                // Hover-to-add: only when not over an existing segment.
-                if let hx = hoverX, duration > 0 {
+                // Hover-to-add: only when a full default zoom can fit at this spot.
+                if let hx = hoverX, activeSegmentDragID == nil, duration > 0 {
                     let time = (Double(hx) / Double(width)) * duration
-                    if project.segment(containing: time) == nil {
+                    let snapped = Self.snap(time, toPlayhead: project.currentSeconds)
+                    if project.canAddZoomSegment(at: snapped) {
                         HoverAddButton(hx: hx, height: height) {
-                            let snapped = Self.snap(time, toPlayhead: project.currentSeconds)
-                            let segment = project.addZoomSegment(at: snapped)
-                            onSelectSegment(segment)
+                            if let segment = project.addZoomSegment(at: snapped) {
+                                onSelectSegment(segment)
+                            }
                         }
                     }
                 }
@@ -84,6 +94,10 @@ struct AnimationsTrack: View {
             .frame(width: width, height: height)
             .contentShape(Rectangle())
             .onContinuousHover { phase in
+                guard activeSegmentDragID == nil else {
+                    hoverX = nil
+                    return
+                }
                 switch phase {
                 case .active(let p):
                     hoverX = max(0, min(p.x, width))
@@ -153,22 +167,30 @@ private struct SegmentBlock: View {
     /// `clipTimelineStart - trimStartTime`. Lets the block render at the right spot
     /// even as the clip is moved around on the timeline.
     let clipDisplayOffset: Double
+    let sourceRange: ClosedRange<Double>
+    let blockedSegments: [ZoomSegment]
     /// Playhead position in *timeline* coords (matches the on-screen ruler).
     let playheadTime: Double
     let height: CGFloat
+    let resolveChange: (ZoomSegment) -> ZoomSegment?
     let onTap: () -> Void
     let onChange: (ZoomSegment) -> Void
     let onDelete: () -> Void
     /// Snap callback receives the *timeline* time it snapped to (or nil).
     let onSnap: (Double?) -> Void
+    let onDragActivityChanged: (Bool) -> Void
 
     @State private var dragSnapshot: (start: Double, duration: Double)?
+    @State private var previewSegment: ZoomSegment?
     @State private var tooltipText: String?
     @State private var isHovering: Bool = false
+    @State private var snappedPreviewTime: Double?
+
+    private var renderedSegment: ZoomSegment { previewSegment ?? segment }
 
     /// Timeline position to render this segment's left edge at.
-    private var displayStartTime: Double { segment.startTime + clipDisplayOffset }
-    private var displayEndTime: Double { segment.endTime + clipDisplayOffset }
+    private var displayStartTime: Double { renderedSegment.startTime + clipDisplayOffset }
+    private var displayEndTime: Double { renderedSegment.endTime + clipDisplayOffset }
 
     private var startX: CGFloat {
         guard totalDuration > 0 else { return 0 }
@@ -177,7 +199,7 @@ private struct SegmentBlock: View {
 
     private var blockWidth: CGFloat {
         guard totalDuration > 0 else { return 60 }
-        return max(CGFloat(segment.duration / totalDuration) * trackWidth, 36)
+        return max(CGFloat(renderedSegment.duration / totalDuration) * trackWidth, 36)
     }
 
     var body: some View {
@@ -212,7 +234,8 @@ private struct SegmentBlock: View {
                     .zIndex(10)
             }
         }
-        .position(x: startX + blockWidth / 2, y: (height + 12) / 2)
+        .offset(x: startX, y: 6)
+        .zIndex(dragSnapshot == nil ? 0 : 20)
         .brightness(isHovering ? 0.06 : 0)
         .animation(.easeOut(duration: 0.15), value: isHovering)
         .onHover { isHovering = $0 }
@@ -227,9 +250,9 @@ private struct SegmentBlock: View {
             Image(systemName: segment.focus.systemImage)
                 .font(.system(size: 13, weight: .semibold))
             HStack(spacing: 4) {
-                Text(String(format: "%.1f×", segment.scale))
+                Text(String(format: "%.1f×", renderedSegment.scale))
                 Text("·")
-                Text(String(format: "%.1fs", segment.duration))
+                Text(String(format: "%.1fs", renderedSegment.duration))
             }
             .font(.system(size: 9, weight: .medium, design: .rounded))
         }
@@ -266,19 +289,14 @@ private struct SegmentBlock: View {
         .gesture(
             DragGesture(minimumDistance: 3)
                 .onChanged { v in
-                    if dragSnapshot == nil { dragSnapshot = (segment.startTime, segment.duration) }
+                    beginDragIfNeeded()
                     let dt = (Double(v.translation.width) / Double(trackWidth)) * totalDuration
                     let raw = (dragSnapshot?.start ?? 0) + dt
                     let playheadSource = playheadTime - clipDisplayOffset
                     let liveStart = AnimationsTrack.snapToPlayhead(raw, playheadTime: playheadSource)
-                    var s = segment
-                    s.startTime = clampedStart(liveStart, duration: s.duration)
-                    onChange(s)
-                    let displayStart = s.startTime + clipDisplayOffset
-                    let displayEnd = s.endTime + clipDisplayOffset
-                    tooltipText = "\(formatTimestamp(displayStart)) → \(formatTimestamp(displayEnd))"
-                    let snappedToPlayhead = abs(displayStart - playheadTime) < 0.001
-                    onSnap(snappedToPlayhead ? playheadTime : nil)
+                    var s = dragBaseSegment
+                    s.startTime = clampedMovementStart(liveStart, duration: s.duration)
+                    applyPreview(s, showsTooltip: false)
                 }
                 .onEnded { v in
                     if let snap = dragSnapshot {
@@ -286,13 +304,11 @@ private struct SegmentBlock: View {
                         let raw = snap.start + dt
                         let playheadSource = playheadTime - clipDisplayOffset
                         let snapped = AnimationsTrack.snap(raw, toPlayhead: playheadSource)
-                        var s = segment
-                        s.startTime = clampedStart(snapped, duration: s.duration)
-                        onChange(s)
+                        var s = dragBaseSegment
+                        s.startTime = clampedMovementStart(snapped, duration: s.duration)
+                        commitChange(s)
                     }
-                    dragSnapshot = nil
-                    tooltipText = nil
-                    onSnap(nil)
+                    endDrag()
                 }
         )
     }
@@ -316,56 +332,127 @@ private struct SegmentBlock: View {
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { v in
-                        if dragSnapshot == nil { dragSnapshot = (segment.startTime, segment.duration) }
+                        beginDragIfNeeded()
                         onDrag(v.translation.width)
                     }
                     .onEnded { v in
                         onEnd(v.translation.width)
-                        dragSnapshot = nil
-                        tooltipText = nil
-                        onSnap(nil)
+                        endDrag()
                     }
             )
     }
 
     private enum Edge { case leading, trailing }
 
+    private var dragBaseSegment: ZoomSegment {
+        var s = segment
+        if let snap = dragSnapshot {
+            s.startTime = snap.start
+            s.duration = snap.duration
+        }
+        return s
+    }
+
+    private func beginDragIfNeeded() {
+        guard dragSnapshot == nil else { return }
+        dragSnapshot = (renderedSegment.startTime, renderedSegment.duration)
+        previewSegment = renderedSegment
+        onDragActivityChanged(true)
+    }
+
+    private func endDrag() {
+        dragSnapshot = nil
+        previewSegment = nil
+        tooltipText = nil
+        updateSnapGuide(nil)
+        onDragActivityChanged(false)
+    }
+
     private func clampedStart(_ start: Double, duration: Double) -> Double {
-        max(0, min(start, max(totalDuration - clipDisplayOffset - duration, 0)))
+        max(sourceRange.lowerBound, min(start, max(sourceRange.upperBound - duration, sourceRange.lowerBound)))
+    }
+
+    private func clampedMovementStart(_ start: Double, duration: Double) -> Double {
+        guard let snap = dragSnapshot else { return clampedStart(start, duration: duration) }
+        let previousEnd = blockedSegments
+            .filter { $0.endTime <= snap.start }
+            .map(\.endTime)
+            .max() ?? sourceRange.lowerBound
+        let nextStart = blockedSegments
+            .filter { $0.startTime >= snap.start + snap.duration }
+            .map(\.startTime)
+            .min() ?? sourceRange.upperBound
+        return max(previousEnd, min(start, max(nextStart - duration, previousEnd)))
+    }
+
+    private func applyPreview(_ segment: ZoomSegment, showsTooltip: Bool = true) {
+        var resolved = segment
+        resolved.normalize()
+        previewSegment = resolved
+        let displayStart = resolved.startTime + clipDisplayOffset
+        let displayEnd = resolved.endTime + clipDisplayOffset
+        tooltipText = showsTooltip ? "\(formatTimestamp(displayStart)) → \(formatTimestamp(displayEnd))" : nil
+        updateSnapGuide(abs(displayStart - playheadTime) < 0.001 ? playheadTime : nil)
+    }
+
+    private func commitChange(_ segment: ZoomSegment) {
+        guard let resolved = resolveChange(segment) else { return }
+        onChange(resolved)
+    }
+
+    private func updateSnapGuide(_ time: Double?) {
+        guard snappedPreviewTime != time else { return }
+        snappedPreviewTime = time
+        onSnap(time)
     }
 
     private func resize(_ edge: Edge, translation: CGFloat, snapToGrid: Bool) {
         guard let snap = dragSnapshot else { return }
         let dt = (Double(translation) / Double(trackWidth)) * totalDuration
         let playheadSource = playheadTime - clipDisplayOffset
-        var s = segment
+        var s = dragBaseSegment
         switch edge {
         case .leading:
-            let proposedStart = max(0, snap.start + dt)
+            let endTime = snap.start + snap.duration
+            let previousEnd = blockedSegments
+                .filter { $0.endTime <= endTime }
+                .map(\.endTime)
+                .max() ?? sourceRange.lowerBound
+            let earliestStart = max(previousEnd, endTime - ZoomSegment.durationRange.upperBound)
+            let latestStart = endTime - ZoomSegment.durationRange.lowerBound
+            let proposedStart = max(earliestStart, min(snap.start + dt, latestStart))
             let nextStart = snapToGrid
                 ? AnimationsTrack.snap(proposedStart, toPlayhead: playheadSource)
                 : AnimationsTrack.snapToPlayhead(proposedStart, playheadTime: playheadSource)
-            let endTime = snap.start + snap.duration
-            let newDuration = max(ZoomSegment.durationRange.lowerBound, endTime - nextStart)
-            s.startTime = nextStart
-            s.duration = min(newDuration, ZoomSegment.durationRange.upperBound)
-            let displayStart = s.startTime + clipDisplayOffset
-            tooltipText = formatTimestamp(displayStart)
-            onSnap(abs(displayStart - playheadTime) < 0.001 ? playheadTime : nil)
+            s.startTime = max(earliestStart, min(nextStart, latestStart))
+            s.duration = endTime - s.startTime
         case .trailing:
-            let maxDur = min(totalDuration - clipDisplayOffset - s.startTime, ZoomSegment.durationRange.upperBound)
+            let nextSegmentStart = blockedSegments
+                .filter { $0.startTime >= snap.start }
+                .map(\.startTime)
+                .min() ?? sourceRange.upperBound
+            let maxDur = min(
+                sourceRange.upperBound - s.startTime,
+                nextSegmentStart - s.startTime,
+                ZoomSegment.durationRange.upperBound
+            )
             let proposedDuration = max(ZoomSegment.durationRange.lowerBound,
                                        min(snap.duration + dt, maxDur))
             let proposedEnd = s.startTime + proposedDuration
             let endTime = snapToGrid
                 ? AnimationsTrack.snap(proposedEnd, toPlayhead: playheadSource)
                 : AnimationsTrack.snapToPlayhead(proposedEnd, playheadTime: playheadSource)
-            s.duration = max(ZoomSegment.durationRange.lowerBound, endTime - s.startTime)
-            let displayEnd = s.endTime + clipDisplayOffset
-            tooltipText = "\(formatTimestamp(displayEnd)) · \(String(format: "%.2fs", s.duration))"
-            onSnap(abs(displayEnd - playheadTime) < 0.001 ? playheadTime : nil)
+            let clampedEnd = max(
+                s.startTime + ZoomSegment.durationRange.lowerBound,
+                min(endTime, s.startTime + maxDur)
+            )
+            s.duration = clampedEnd - s.startTime
         }
-        onChange(s)
+        if snapToGrid {
+            commitChange(s)
+        } else {
+            applyPreview(s)
+        }
     }
 }
 

@@ -10,13 +10,13 @@ struct AnimationSample: Equatable, Sendable {
 enum AnimationSampler {
     /// Natural phone occupies this fraction of the canvas side at scale 1.0.
     /// Must match `FramedDeviceView.naturalHeightFraction` so preview and export align.
-    static let baseHeightFraction: CGFloat = 0.9
+    nonisolated static let baseHeightFraction: CGFloat = 0.9
 
     /// Returns the effective camera state at a given time. The camera lives at its
     /// `base` state by default; if `seconds` falls inside an active segment, the state
     /// is eased between `base` and the segment's peak across the in/hold/out envelope
     /// using the segment's chosen curve.
-    static func sample(
+    nonisolated static func sample(
         at seconds: Double,
         segments: [ZoomSegment],
         baseScale: CGFloat,
@@ -28,7 +28,7 @@ enum AnimationSampler {
             offsetY: baseOffset.height
         )
 
-        guard let segment = segments.first(where: { seconds >= $0.startTime && seconds <= $0.endTime })
+        guard let segment = segments.first(where: { seconds >= $0.startTime && seconds <= $0.startTime + $0.duration })
         else { return base }
 
         let localT = seconds - segment.startTime
@@ -50,7 +50,7 @@ enum AnimationSampler {
     }
 
     /// Peak (held) state of a segment based on its scale + focus.
-    private static func peakState(of segment: ZoomSegment) -> AnimationSample {
+    nonisolated private static func peakState(of segment: ZoomSegment) -> AnimationSample {
         let dy: CGFloat
         switch segment.focus {
         case .center: dy = 0
@@ -62,7 +62,7 @@ enum AnimationSampler {
 
     /// Returns envelope progress: 0 = base, 1 = peak. May briefly overshoot above 1
     /// or undershoot below 0 depending on the chosen curve — that's the "spring" feel.
-    private static func envelopeProgress(
+    nonisolated private static func envelopeProgress(
         localTime t: Double,
         duration: Double,
         transitionIn: Double,
@@ -90,7 +90,7 @@ enum AnimationSampler {
     // All curves accept u ∈ [0, 1] and return ~0 at u=0 and ~1 at u=1. Spring/Bouncy
     // briefly exceed 1 in the middle — that's intentional (overshoot).
 
-    private static func easingFunction(for curve: AnimationCurve) -> (Double) -> Double {
+    nonisolated private static func easingFunction(for curve: AnimationCurve) -> (Double) -> Double {
         switch curve {
         case .spring: return { springOut($0, overshoot: 1.55) }
         case .bouncy: return { springOut($0, overshoot: 2.7) }
@@ -102,28 +102,28 @@ enum AnimationSampler {
     }
 
     /// Back-out easing (a.k.a. spring). Larger `overshoot` = more bounce.
-    private static func springOut(_ u: Double, overshoot c1: Double) -> Double {
+    nonisolated private static func springOut(_ u: Double, overshoot c1: Double) -> Double {
         let c3 = c1 + 1
         let t = max(0, min(1, u)) - 1
         return 1 + c3 * t * t * t + c1 * t * t
     }
 
-    private static func easeInOutCubic(_ u: Double) -> Double {
+    nonisolated private static func easeInOutCubic(_ u: Double) -> Double {
         let c = max(0, min(1, u))
         return c < 0.5 ? 4 * c * c * c : 1 - pow(-2 * c + 2, 3) / 2
     }
 
-    private static func easeOutQuart(_ u: Double) -> Double {
+    nonisolated private static func easeOutQuart(_ u: Double) -> Double {
         let c = max(0, min(1, u))
         return 1 - pow(1 - c, 4)
     }
 
-    private static func easeOutSine(_ u: Double) -> Double {
+    nonisolated private static func easeOutSine(_ u: Double) -> Double {
         let c = max(0, min(1, u))
         return sin((c * .pi) / 2)
     }
 
-    private static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
+    nonisolated private static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
         return a + (b - a) * t
     }
 }

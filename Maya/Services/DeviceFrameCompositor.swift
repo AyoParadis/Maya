@@ -61,14 +61,14 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
     private let renderQueue = DispatchQueue(label: "maya.compositor.render", qos: .userInitiated)
     private var renderContext: AVVideoCompositionRenderContext?
 
-    var sourcePixelBufferAttributes: [String: Any]? = [
+    var sourcePixelBufferAttributes: [String: any Sendable]? = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
+        kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable]()
     ]
 
-    var requiredPixelBufferAttributesForRenderContext: [String: Any] = [
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
+        kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable]()
     ]
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {

@@ -174,22 +174,17 @@ final class Project {
         return animations.first { s >= $0.startTime && s <= $0.endTime }
     }
 
+    func canAddZoomSegment(at timelineTime: Double) -> Bool {
+        proposedZoomSegment(at: timelineTime) != nil
+    }
+
     /// Adds a zoom anchored at the given *timeline* second. Stored internally in source
     /// coords so the animation stays attached to the same source frame even if the clip
     /// is later moved or re-trimmed.
-    func addZoomSegment(at timelineTime: Double) -> ZoomSegment {
-        let dur = ZoomSegment.defaultDuration
-        let clipStart = clipTimelineStart
-        let clipEnd = clipTimelineEnd
-        let clampedTimeline = max(clipStart, min(timelineTime, max(clipEnd - dur, clipStart)))
-        let sourceStart = timelineToSource(clampedTimeline)
-        var segment = ZoomSegment(
-            startTime: sourceStart,
-            duration: min(dur, max(trimEndTime - sourceStart, 0.4)),
-            scale: ZoomSegment.defaultScale,
-            focus: .center
-        )
-        segment.normalize()
+    @discardableResult
+    func addZoomSegment(at timelineTime: Double) -> ZoomSegment? {
+        guard var segment = proposedZoomSegment(at: timelineTime) else { return nil }
+        segment = nonOverlappingZoomSegment(segment, excluding: segment.id) ?? segment
         animations.append(segment)
         selectedAnimationID = segment.id
         return segment
@@ -197,7 +192,7 @@ final class Project {
 
     func updateZoomSegment(_ segment: ZoomSegment) {
         guard let idx = animations.firstIndex(where: { $0.id == segment.id }) else { return }
-        var s = segment
+        guard var s = nonOverlappingZoomSegment(segment, excluding: segment.id) else { return }
         s.normalize()
         animations[idx] = s
     }
@@ -212,11 +207,102 @@ final class Project {
         guard let original = animations.first(where: { $0.id == id }) else { return nil }
         var copy = original
         copy.id = UUID()
-        copy.startTime = min(original.endTime + 0.1, max(durationSeconds - copy.duration, 0))
-        copy.normalize()
-        animations.append(copy)
-        selectedAnimationID = copy.id
-        return copy
+        guard var placedCopy = nonOverlappingZoomSegment(
+            copy,
+            preferredStart: original.endTime + 0.1,
+            excluding: nil
+        ) else { return nil }
+        placedCopy.normalize()
+        animations.append(placedCopy)
+        selectedAnimationID = placedCopy.id
+        return placedCopy
+    }
+
+    func nonOverlappingZoomSegment(
+        _ segment: ZoomSegment,
+        preferredStart: Double? = nil,
+        excluding excludedID: ZoomSegment.ID?
+    ) -> ZoomSegment? {
+        guard clipDuration >= ZoomSegment.durationRange.lowerBound else { return nil }
+        var s = segment
+        s.normalize()
+        let lower = trimStartTime
+        let upper = trimEndTime
+        let maxDuration = min(s.duration, upper - lower, ZoomSegment.durationRange.upperBound)
+        s.duration = max(ZoomSegment.durationRange.lowerBound, maxDuration)
+        let start = preferredStart ?? s.startTime
+        guard let placedStart = nearestAvailableZoomStart(
+            preferredStart: start,
+            duration: s.duration,
+            excluding: excludedID,
+            lowerBound: lower,
+            upperBound: upper
+        ) else { return nil }
+        s.startTime = placedStart
+        return s
+    }
+
+    private func proposedZoomSegment(at timelineTime: Double) -> ZoomSegment? {
+        let duration = min(ZoomSegment.defaultDuration, max(clipDuration, 0))
+        guard duration >= ZoomSegment.durationRange.lowerBound else { return nil }
+        let latestTimelineStart = max(clipTimelineEnd - duration, clipTimelineStart)
+        let clampedTimeline = max(clipTimelineStart, min(timelineTime, latestTimelineStart))
+        let sourceStart = timelineToSource(clampedTimeline)
+        var segment = ZoomSegment(
+            startTime: sourceStart,
+            duration: min(duration, max(trimEndTime - sourceStart, 0.4)),
+            scale: ZoomSegment.defaultScale,
+            focus: .center
+        )
+        segment.normalize()
+        guard canPlaceZoomSegment(segment, excluding: nil) else { return nil }
+        return segment
+    }
+
+    private func canPlaceZoomSegment(_ segment: ZoomSegment, excluding excludedID: ZoomSegment.ID?) -> Bool {
+        let endTime = segment.startTime + segment.duration
+        guard segment.startTime >= trimStartTime - 0.001, endTime <= trimEndTime + 0.001 else { return false }
+        return !animations.contains { other in
+            other.id != excludedID && rangesOverlap(segment.startTime, endTime, other.startTime, other.endTime)
+        }
+    }
+
+    private func nearestAvailableZoomStart(
+        preferredStart: Double,
+        duration: Double,
+        excluding excludedID: ZoomSegment.ID?,
+        lowerBound: Double,
+        upperBound: Double
+    ) -> Double? {
+        let sorted = animations
+            .filter { $0.id != excludedID }
+            .sorted { $0.startTime < $1.startTime }
+        var gaps: [(start: Double, end: Double)] = []
+        var cursor = lowerBound
+        for segment in sorted {
+            if segment.startTime > cursor {
+                gaps.append((cursor, segment.startTime))
+            }
+            cursor = max(cursor, segment.endTime)
+        }
+        if cursor < upperBound {
+            gaps.append((cursor, upperBound))
+        }
+
+        let viable = gaps.compactMap { gap -> (start: Double, end: Double)? in
+            let latestStart = gap.end - duration
+            return latestStart >= gap.start ? (gap.start, latestStart) : nil
+        }
+        guard !viable.isEmpty else { return nil }
+
+        let candidate = viable
+            .map { gap in max(gap.start, min(preferredStart, gap.end)) }
+            .min { abs($0 - preferredStart) < abs($1 - preferredStart) }
+        return candidate
+    }
+
+    private func rangesOverlap(_ aStart: Double, _ aEnd: Double, _ bStart: Double, _ bEnd: Double) -> Bool {
+        aStart < bEnd - 0.001 && aEnd > bStart + 0.001
     }
 
     func toggleMute() {
