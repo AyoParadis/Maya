@@ -16,7 +16,7 @@
 
 ## Maya AI Studio
 
-Maya AI Studio is its own product and release line. It is designed for makers, designers, and app teams who need to turn raw screen recordings into launch videos, App Store assets, social clips, demos, and transparent overlays without moving through a heavy video editor.
+Maya AI Studio is a standalone product and release line. It is designed for makers, designers, and app teams who need to turn raw screen recordings into launch videos, App Store assets, social clips, demos, and transparent overlays without moving through a heavy video editor.
 
 The built app is named **Maya AI Studio**, uses the bundle identifier `com.dlmapps.MayaAIStudio`, and follows the Maya AI Studio release line. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target. That is deliberate: the public product name changed while the project layout stayed stable.
 
@@ -145,9 +145,9 @@ Maya/
 └── Assets.xcassets/              App icon and device frame assets
 ```
 
-## Origins
+## Upstream
 
-Maya AI Studio began as a fork of [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya). This project now follows its own product direction and release cadence, while keeping attribution to the original project history.
+Maya AI Studio is maintained as a standalone app. The repository keeps an upstream connection to [ronaldo-avalos/Maya](https://github.com/ronaldo-avalos/Maya) only so useful upstream commits can be reviewed and pulled in when they fit Maya AI Studio's direction.
 
 ## License
 
