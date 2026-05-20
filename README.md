@@ -7,7 +7,7 @@
 
   Native macOS editor for turning screen recordings into framed, animated marketing clips with zoom moments, trim controls, preset previews, and transparent or social-ready exports.
 
-  Current release: **Maya Studio 1.0.5**
+  Current release: **Maya Studio 1.0.6**
 
   ![Maya Studio screenshot](docs/screenshot.png)
 </div>
@@ -84,9 +84,9 @@ The built app is named **Maya Studio**, uses the bundle identifier `com.dlmapps.
 
 ## Releases
 
-The latest installable Maya Studio release is **Maya Studio 1.0.5**:
+The latest installable Maya Studio release is **Maya Studio 1.0.6**:
 
-[Download Maya Studio 1.0.5](https://github.com/AyoParadis/Maya/releases/tag/v1.0.5)
+[Download Maya Studio 1.0.6](https://github.com/AyoParadis/Maya/releases/tag/v1.0.6)
 
 Release artifacts are ad-hoc signed when built locally on this machine because the configured Mac Development certificate is not installed here.
 

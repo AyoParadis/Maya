@@ -101,6 +101,10 @@ struct AnimationsTrack: View {
         }
         return (t / snapStep).rounded() * snapStep
     }
+
+    static func snapToPlayhead(_ t: Double, playheadTime: Double) -> Double {
+        abs(t - playheadTime) < playheadSnapTolerance ? playheadTime : t
+    }
 }
 
 // MARK: - Time tooltip
@@ -180,13 +184,25 @@ private struct SegmentBlock: View {
         ZStack {
             content
             // Left handle
-            handle(alignment: .leading) { translation in
-                resize(.leading, translation: translation)
-            }
+            handle(
+                alignment: .leading,
+                onDrag: { translation in
+                    resize(.leading, translation: translation, snapToGrid: false)
+                },
+                onEnd: { translation in
+                    resize(.leading, translation: translation, snapToGrid: true)
+                }
+            )
             // Right handle
-            handle(alignment: .trailing) { translation in
-                resize(.trailing, translation: translation)
-            }
+            handle(
+                alignment: .trailing,
+                onDrag: { translation in
+                    resize(.trailing, translation: translation, snapToGrid: false)
+                },
+                onEnd: { translation in
+                    resize(.trailing, translation: translation, snapToGrid: true)
+                }
+            )
         }
         .frame(width: blockWidth, height: height)
         .overlay(alignment: .top) {
@@ -253,12 +269,10 @@ private struct SegmentBlock: View {
                     if dragSnapshot == nil { dragSnapshot = (segment.startTime, segment.duration) }
                     let dt = (Double(v.translation.width) / Double(trackWidth)) * totalDuration
                     let raw = (dragSnapshot?.start ?? 0) + dt
-                    // Snap compares times in the SAME coordinate system. Convert the playhead
-                    // (timeline) to source by subtracting the display offset.
                     let playheadSource = playheadTime - clipDisplayOffset
-                    let snapped = AnimationsTrack.snap(raw, toPlayhead: playheadSource)
+                    let liveStart = AnimationsTrack.snapToPlayhead(raw, playheadTime: playheadSource)
                     var s = segment
-                    s.startTime = max(0, min(snapped, max(totalDuration - clipDisplayOffset - s.duration, 0)))
+                    s.startTime = clampedStart(liveStart, duration: s.duration)
                     onChange(s)
                     let displayStart = s.startTime + clipDisplayOffset
                     let displayEnd = s.endTime + clipDisplayOffset
@@ -273,7 +287,7 @@ private struct SegmentBlock: View {
                         let playheadSource = playheadTime - clipDisplayOffset
                         let snapped = AnimationsTrack.snap(raw, toPlayhead: playheadSource)
                         var s = segment
-                        s.startTime = max(0, min(snapped, max(totalDuration - clipDisplayOffset - s.duration, 0)))
+                        s.startTime = clampedStart(snapped, duration: s.duration)
                         onChange(s)
                     }
                     dragSnapshot = nil
@@ -283,7 +297,11 @@ private struct SegmentBlock: View {
         )
     }
 
-    private func handle(alignment: HorizontalAlignment, onDrag: @escaping (CGFloat) -> Void) -> some View {
+    private func handle(
+        alignment: HorizontalAlignment,
+        onDrag: @escaping (CGFloat) -> Void,
+        onEnd: @escaping (CGFloat) -> Void
+    ) -> some View {
         let isLeading = alignment == .leading
         return Capsule()
             .fill(Color.white.opacity(isSelected ? 0.7 : 0.32))
@@ -301,7 +319,8 @@ private struct SegmentBlock: View {
                         if dragSnapshot == nil { dragSnapshot = (segment.startTime, segment.duration) }
                         onDrag(v.translation.width)
                     }
-                    .onEnded { _ in
+                    .onEnded { v in
+                        onEnd(v.translation.width)
                         dragSnapshot = nil
                         tooltipText = nil
                         onSnap(nil)
@@ -311,7 +330,11 @@ private struct SegmentBlock: View {
 
     private enum Edge { case leading, trailing }
 
-    private func resize(_ edge: Edge, translation: CGFloat) {
+    private func clampedStart(_ start: Double, duration: Double) -> Double {
+        max(0, min(start, max(totalDuration - clipDisplayOffset - duration, 0)))
+    }
+
+    private func resize(_ edge: Edge, translation: CGFloat, snapToGrid: Bool) {
         guard let snap = dragSnapshot else { return }
         let dt = (Double(translation) / Double(trackWidth)) * totalDuration
         let playheadSource = playheadTime - clipDisplayOffset
@@ -319,10 +342,12 @@ private struct SegmentBlock: View {
         switch edge {
         case .leading:
             let proposedStart = max(0, snap.start + dt)
-            let snappedStart = AnimationsTrack.snap(proposedStart, toPlayhead: playheadSource)
+            let nextStart = snapToGrid
+                ? AnimationsTrack.snap(proposedStart, toPlayhead: playheadSource)
+                : AnimationsTrack.snapToPlayhead(proposedStart, playheadTime: playheadSource)
             let endTime = snap.start + snap.duration
-            let newDuration = max(ZoomSegment.durationRange.lowerBound, endTime - snappedStart)
-            s.startTime = snappedStart
+            let newDuration = max(ZoomSegment.durationRange.lowerBound, endTime - nextStart)
+            s.startTime = nextStart
             s.duration = min(newDuration, ZoomSegment.durationRange.upperBound)
             let displayStart = s.startTime + clipDisplayOffset
             tooltipText = formatTimestamp(displayStart)
@@ -331,7 +356,10 @@ private struct SegmentBlock: View {
             let maxDur = min(totalDuration - clipDisplayOffset - s.startTime, ZoomSegment.durationRange.upperBound)
             let proposedDuration = max(ZoomSegment.durationRange.lowerBound,
                                        min(snap.duration + dt, maxDur))
-            let endTime = AnimationsTrack.snap(s.startTime + proposedDuration, toPlayhead: playheadSource)
+            let proposedEnd = s.startTime + proposedDuration
+            let endTime = snapToGrid
+                ? AnimationsTrack.snap(proposedEnd, toPlayhead: playheadSource)
+                : AnimationsTrack.snapToPlayhead(proposedEnd, playheadTime: playheadSource)
             s.duration = max(ZoomSegment.durationRange.lowerBound, endTime - s.startTime)
             let displayEnd = s.endTime + clipDisplayOffset
             tooltipText = "\(formatTimestamp(displayEnd)) · \(String(format: "%.2fs", s.duration))"

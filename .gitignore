@@ -7,6 +7,7 @@ Icon?
 
 # Xcode
 build/
+dist/
 DerivedData/
 *.pbxuser
 !default.pbxuser
