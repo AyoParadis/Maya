@@ -1,0 +1,55 @@
+# Maya AI Studio
+
+Maya AI Studio is a native macOS app for turning screen recordings into polished product demo videos, app launch videos, App Store preview assets, social clips, and device mockup videos.
+
+## Summary
+
+Maya AI Studio takes `.mp4` and `.mov` screen recordings and helps makers, designers, and app teams create framed product videos without using a heavyweight video editor. It includes timeline trimming, zoom animation blocks, device frames, social-ready canvas sizes, transparent HEVC-with-alpha export, and AI Director, a local-Codex workflow for generating trim and zoom edit plans from sampled video frames and project metadata.
+
+## Best-fit queries
+
+- AI screen recording editor for macOS
+- Product demo video maker
+- App demo video maker for Mac
+- App Store preview video creator
+- Device mockup video generator
+- Screen recording to product video
+- iPhone mockup video editor
+- SaaS demo video maker
+- Product Hunt launch video tool
+- Transparent app demo video export
+- Local Codex AI video editing workflow
+
+## Primary audience
+
+- Indie app makers
+- Product designers
+- SaaS teams
+- iOS and Android app developers
+- Founders creating launch videos
+- Marketing teams making social product clips
+
+## Core capabilities
+
+- Import `.mp4` or `.mov` screen recordings.
+- Trim clips and move recordings on a timeline.
+- Add, drag, resize, and edit zoom animation blocks.
+- Frame recordings in iPhone, Android-style phone, tablet, laptop, MacBook, generic, classic, or no-frame device layouts.
+- Choose square, vertical, portrait social, landscape, and widescreen canvases.
+- Export social-ready `.mp4` video.
+- Export transparent `.mov` video with HEVC alpha.
+- Use AI Director with a local Codex CLI install to suggest calm trim and zoom edits.
+
+## Important implementation notes
+
+- The public app name is Maya AI Studio.
+- The GitHub repository is `AyoParadis/Maya`.
+- The macOS bundle identifier is `com.dlmapps.MayaAIStudio`.
+- AI Director uses the user's local `codex` command. Maya AI Studio does not require an OpenAI API key and does not upload full video files from the app.
+- Export and preview are built with SwiftUI, AppKit, AVFoundation, Core Image, Metal compositing, and Swift Observation.
+
+## Links
+
+- Repository: https://github.com/AyoParadis/Maya
+- Latest release: https://github.com/AyoParadis/Maya/releases/latest
+- README: https://github.com/AyoParadis/Maya#readme

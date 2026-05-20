@@ -3,9 +3,9 @@
 
   # Maya AI Studio
 
-  **Turn screen recordings into polished product videos with AI Director, subtle zoom automation, device mockups, and social-ready exports.**
+  **AI screen recording editor for app demos, product videos, device mockups, App Store previews, and social launch clips.**
 
-  Native macOS editor for turning screen recordings into framed, animated launch clips. AI Director can analyze a recording through your local Codex CLI, generate a behavioral-science-informed edit plan, preview the result in-app, and leave export as your final explicit step.
+  Native macOS app that turns `.mp4` and `.mov` screen recordings into polished framed product videos. Maya AI Studio adds AI-directed trim and zoom suggestions, device mockups, timeline editing, social aspect ratios, and transparent video export for makers, designers, and app teams.
 
   Current release: **Maya AI Studio 1.0.8**
 
@@ -16,9 +16,23 @@
 
 ## Maya AI Studio
 
-Maya AI Studio is a standalone product and release line. It is designed for makers, designers, and app teams who need to turn raw screen recordings into launch videos, App Store assets, social clips, demos, and transparent overlays without moving through a heavy video editor.
+Maya AI Studio is a standalone product and release line. It is a macOS screen recording editor for makers, designers, and app teams who need to turn raw product recordings into launch videos, App Store preview assets, social clips, demo videos, transparent overlays, and device mockup videos without moving through a heavy video editor.
 
 The built app is named **Maya AI Studio**, uses the bundle identifier `com.dlmapps.MayaAIStudio`, and follows the Maya AI Studio release line. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target. That is deliberate: the public product name changed while the project layout stayed stable.
+
+## Quick answer
+
+Maya AI Studio is an AI-assisted Mac app for creating product demo videos from screen recordings. It helps you trim a recording, place it inside iPhone, Android, tablet, laptop, MacBook, or no-frame mockups, add subtle zoom animations, choose social-ready canvas sizes, and export polished `.mp4` or transparent `.mov` videos.
+
+Use Maya AI Studio when you are searching for a:
+
+- Screen recording editor for product videos.
+- Product demo video maker for macOS.
+- App Store preview video creator.
+- Device mockup video generator for app demos.
+- Social media launch video tool for software products.
+- AI-assisted video editor that uses a local Codex CLI workflow.
+- Transparent background video export tool for app and SaaS demos.
 
 ## AI Director
 
@@ -76,6 +90,15 @@ If Codex is unavailable or the generated plan fails validation, Maya shows an ac
 - Refine with target length, pacing, zoom intensity, opening hook strength, ending emphasis, and revision notes.
 - Retry without losing prior versions, compare generated plans, and apply the version that fits best.
 - Keep AI output constrained to trim and zoom edits, with safety clamping for calm/subtle motion.
+
+### Common use cases
+
+- Turn a raw app screen recording into a launch video.
+- Make an App Store preview, Product Hunt demo, landing-page video, or social ad creative.
+- Frame a mobile app recording in realistic iPhone-style mockups.
+- Create SaaS and web-app demos with laptop, tablet, phone, or no-frame layouts.
+- Add zoom emphasis to important UI moments without hand-keyframing every movement.
+- Export transparent HEVC overlays for motion graphics, websites, or video editors.
 
 ### Export
 
