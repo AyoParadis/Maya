@@ -7,7 +7,7 @@
 
   Native macOS editor for turning screen recordings into framed, animated launch clips. AI Director can analyze a recording through your local Codex CLI, generate a behavioral-science-informed edit plan, preview the result in-app, and leave export as your final explicit step.
 
-  Current release: **Maya AI Studio 1.0.7**
+  Current release: **Maya AI Studio 1.0.8**
 
   ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
@@ -115,9 +115,15 @@ If Codex is unavailable or the generated plan fails validation, Maya shows an ac
 
 ## Releases
 
-The latest installable Maya AI Studio release is **Maya AI Studio 1.0.7**:
+The latest installable Maya AI Studio release is **Maya AI Studio 1.0.8**:
 
-[Download Maya AI Studio 1.0.7](https://github.com/AyoParadis/Maya/releases/tag/v1.0.7)
+[Download Maya AI Studio 1.0.8](https://github.com/AyoParadis/Maya/releases/tag/v1.0.8)
+
+### Maya AI Studio 1.0.8
+
+- Fixes zoom block dragging and resizing in the animation timeline so blocks track the pointer smoothly instead of jumping backward during a drag.
+- Uses a stable timeline-track coordinate space for live drag gestures, avoiding feedback from measuring movement inside the block that is currently being repositioned.
+- Expands the timeline drag regression check so future changes fail fast if animation block gestures return to moving local coordinates.
 
 Release artifacts are ad-hoc signed when built locally on this machine because the configured Mac Development certificate is not installed here.
 

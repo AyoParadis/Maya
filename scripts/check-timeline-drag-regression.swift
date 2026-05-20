@@ -89,6 +89,21 @@ if !usesRenderOffsetForDrag {
     exit(1)
 }
 
+let usesStableDragCoordinateSpace =
+    source.contains("static let dragCoordinateSpace") &&
+    source.contains(".coordinateSpace(name: Self.dragCoordinateSpace)") &&
+    source.contains("DragGesture(minimumDistance: 3, coordinateSpace: .named(AnimationsTrack.dragCoordinateSpace))") &&
+    source.contains("DragGesture(minimumDistance: 2, coordinateSpace: .named(AnimationsTrack.dragCoordinateSpace))")
+
+if !usesStableDragCoordinateSpace {
+    fputs(
+        "Timeline drag regression: animation block drags must use a stable track coordinate space, " +
+            "not the moving block's local coordinate space.\n",
+        stderr
+    )
+    exit(1)
+}
+
 let preservesContinuousResize =
     source.contains("resize(.leading, translation: translation, snapToGrid: false)") &&
     source.contains("resize(.trailing, translation: translation, snapToGrid: false)") &&

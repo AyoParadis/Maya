@@ -13,6 +13,7 @@ struct AnimationsTrack: View {
 
     static let snapStep: Double = 0.25
     static let playheadSnapTolerance: Double = 0.15
+    static let dragCoordinateSpace = "Maya.AnimationsTrack.drag"
 
     var body: some View {
         GeometryReader { proxy in
@@ -93,6 +94,7 @@ struct AnimationsTrack: View {
             }
             .frame(width: width, height: height)
             .contentShape(Rectangle())
+            .coordinateSpace(name: Self.dragCoordinateSpace)
             .onContinuousHover { phase in
                 guard activeSegmentDragID == nil else {
                     hoverX = nil
@@ -287,7 +289,7 @@ private struct SegmentBlock: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .gesture(
-            DragGesture(minimumDistance: 3)
+            DragGesture(minimumDistance: 3, coordinateSpace: .named(AnimationsTrack.dragCoordinateSpace))
                 .onChanged { v in
                     beginDragIfNeeded()
                     let dt = (Double(v.translation.width) / Double(trackWidth)) * totalDuration
@@ -330,7 +332,7 @@ private struct SegmentBlock: View {
                 if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
             }
             .gesture(
-                DragGesture(minimumDistance: 2)
+                DragGesture(minimumDistance: 2, coordinateSpace: .named(AnimationsTrack.dragCoordinateSpace))
                     .onChanged { v in
                         beginDragIfNeeded()
                         onDrag(v.translation.width)
