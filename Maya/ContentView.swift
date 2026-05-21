@@ -8,9 +8,90 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var selectedMode: StudioMode = .video
+
     var body: some View {
-        EditorView()
-            .frame(minWidth: 1120, minHeight: 720)
+        VStack(spacing: 0) {
+            ModeSwitchBar(selectedMode: $selectedMode)
+
+            switch selectedMode {
+            case .video:
+                EditorView()
+            case .carousel:
+                CarouselStudioView()
+            }
+        }
+        .frame(minWidth: 1120, minHeight: 720)
+    }
+}
+
+enum StudioMode: String, CaseIterable, Identifiable {
+    case video
+    case carousel
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .video: "Video"
+        case .carousel: "Carousel"
+        }
+    }
+}
+
+struct StudioModePicker: View {
+    @Binding var selectedMode: StudioMode
+
+    var body: some View {
+        Picker("Mode", selection: $selectedMode) {
+            ForEach(StudioMode.allCases) { mode in
+                Text(mode.label).tag(mode)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 190)
+    }
+}
+
+private struct ModeSwitchBar: View {
+    @Binding var selectedMode: StudioMode
+
+    var body: some View {
+        HStack {
+            Spacer()
+            StudioModePicker(selectedMode: $selectedMode)
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 18)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 1)
+        }
+    }
+}
+
+enum AppChrome {
+    static let title = "Maya AI Studio"
+    static let accentGradient = LinearGradient(
+        colors: [
+            Color(hex: "#7C6DFF") ?? .accentColor,
+            Color(hex: "#377DFF") ?? .blue
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let accentShadow = (Color(hex: "#6466FA") ?? .accentColor).opacity(0.28)
+
+    static var versionLabel: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        if let build, !build.isEmpty {
+            return "v\(version) (\(build))"
+        }
+        return "v\(version)"
     }
 }
 

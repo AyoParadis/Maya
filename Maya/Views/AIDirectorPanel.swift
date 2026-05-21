@@ -141,12 +141,6 @@ struct AIDirectorPanel: View {
 
             if let plan = run.selectedPlan {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        metric(title: "Hook", value: plan.scores.hook)
-                        metric(title: "Clarity", value: plan.scores.clarity)
-                        metric(title: "Pacing", value: plan.scores.pacing)
-                    }
-
                     Text(plan.rationale)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -257,19 +251,6 @@ struct AIDirectorPanel: View {
         }
     }
 
-    private func metric(title: String, value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(value)")
-                    .monospacedDigit()
-            }
-            .font(.caption.weight(.medium))
-            ProgressView(value: Double(value), total: 100)
-        }
-        .frame(maxWidth: .infinity)
-    }
 }
 
 struct AIDirectorWorkingCard: View {

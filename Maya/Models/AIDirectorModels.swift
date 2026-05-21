@@ -126,7 +126,6 @@ struct AIDirectorPlan: Codable, Identifiable, Equatable, Sendable {
     var trimStart: Double
     var trimEnd: Double
     var zoomSegments: [AIDirectorPlanZoomSegment]
-    var scores: AIDirectorScores
     var warnings: [String]
 
     enum CodingKeys: String, CodingKey {
@@ -136,7 +135,6 @@ struct AIDirectorPlan: Codable, Identifiable, Equatable, Sendable {
         case trimStart
         case trimEnd
         case zoomSegments
-        case scores
         case warnings
     }
 }
@@ -150,10 +148,4 @@ struct AIDirectorPlanZoomSegment: Codable, Equatable, Sendable {
     var transitionOut: Double
     var curve: String
     var reason: String?
-}
-
-struct AIDirectorScores: Codable, Equatable, Sendable {
-    var hook: Int
-    var clarity: Int
-    var pacing: Int
 }

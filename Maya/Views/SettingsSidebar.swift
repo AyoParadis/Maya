@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -20,7 +19,7 @@ struct SettingsSidebar: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                appVersionSection
+                StudioSidebarHeader(title: "Video")
                 Divider()
                 videoSection
                 if project.videoURL != nil {
@@ -51,26 +50,6 @@ struct SettingsSidebar: View {
         }
         .scrollIndicators(.visible)
         .frame(minWidth: 320, idealWidth: 360)
-    }
-
-    private var appVersionSection: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Maya AI Studio")
-                .font(.headline)
-            Spacer()
-            Text(appVersionLabel)
-                .font(.caption.monospacedDigit().weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var appVersionLabel: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        if let build, !build.isEmpty {
-            return "v\(version) (\(build))"
-        }
-        return "v\(version)"
     }
 
     private var deviceSection: some View {
@@ -319,13 +298,15 @@ struct SettingsSidebar: View {
             Text("Export")
                 .font(.headline)
 
-            ExportCardButton(
+            StudioActionCardButton(
                 title: exportButtonTitle,
                 subtitle: exportSubtitle,
                 icon: exportButtonIcon,
                 isEnabled: project.videoURL != nil && !project.isExporting,
-                isExporting: project.isExporting,
+                isWorking: project.isExporting,
                 progress: project.exportProgress,
+                disabledHelp: "Load a video to enable export",
+                enabledHelp: "Render and save the video",
                 action: onExport
             )
         }
@@ -539,184 +520,5 @@ private struct DeviceColorSwatch: View {
         }
         .buttonStyle(.plain)
         .help(color.name)
-    }
-}
-
-private struct AspectRatioChip: View {
-    let aspect: CanvasAspectRatio
-    let isSelected: Bool
-    let action: () -> Void
-
-    /// Tiny visual rectangle in the chip uses the actual aspect so the user
-    /// can read 9:16 vs 4:5 at a glance instead of decoding the text label.
-    private var thumbnailSize: CGSize {
-        let maxDim: CGFloat = 22
-        if aspect.ratio >= 1 {
-            return CGSize(width: maxDim, height: maxDim / aspect.ratio)
-        } else {
-            return CGSize(width: maxDim * aspect.ratio, height: maxDim)
-        }
-    }
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 3)
-                    .stroke(isSelected ? Color.white : Color.primary.opacity(0.7),
-                            lineWidth: 1.5)
-                    .frame(width: thumbnailSize.width, height: thumbnailSize.height)
-                    .frame(height: 24)
-                Text(aspect.shortLabel)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
-            .frame(maxWidth: .infinity, minHeight: 60)
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected
-                          ? (Color(hex: "#6466FA") ?? .accentColor)
-                          : Color.gray.opacity(0.12))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.white.opacity(0.4) : Color.gray.opacity(0.2),
-                             lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .help(aspect.displayName)
-    }
-}
-
-// MARK: - Export card
-
-/// Full-bleed export button styled as a tinted card. Doubles as the progress
-/// surface while the export is running so the layout doesn't reflow.
-private struct ExportCardButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let isEnabled: Bool
-    let isExporting: Bool
-    let progress: Double
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    private var accent: Color { Color(hex: "#6466FA") ?? .accentColor }
-    private var accentDark: Color { Color(hex: "#4F46E5") ?? accent }
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                accent.opacity(isEnabled ? 1.0 : 0.45),
-                                accentDark.opacity(isEnabled ? 1.0 : 0.45)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.white.opacity(isEnabled ? 0.22 : 0.08), lineWidth: 1)
-                    )
-                    .shadow(
-                        color: accent.opacity(isEnabled && isHovering ? 0.45 : 0.25),
-                        radius: isHovering ? 14 : 8,
-                        x: 0,
-                        y: isHovering ? 6 : 4
-                    )
-
-                if isExporting {
-                    progressContent
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                } else {
-                    idleContent
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(RoundedRectangle(cornerRadius: 14))
-            .animation(.easeOut(duration: 0.15), value: isHovering)
-            .animation(.easeOut(duration: 0.2), value: isExporting)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .onHover { hovering in
-            isHovering = hovering && isEnabled
-        }
-        .help(isEnabled ? "Render and save the video" : "Load a video to enable export")
-    }
-
-    private var idleContent: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.18))
-                    .frame(width: 30, height: 30)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            Image(systemName: "arrow.right")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.75))
-                .offset(x: isHovering ? 3 : 0)
-        }
-    }
-
-    private var progressContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .controlSize(.small)
-                    .tint(.white)
-                Text("Exporting")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                Spacer(minLength: 0)
-                Text(String(format: "%.0f%%", max(0, min(1, progress)) * 100))
-                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
-            }
-
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.22))
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(4, g.size.width * CGFloat(max(0, min(1, progress)))))
-                }
-            }
-            .frame(height: 6)
-        }
     }
 }

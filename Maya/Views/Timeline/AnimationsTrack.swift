@@ -23,12 +23,7 @@ struct AnimationsTrack: View {
             let clipDisplayOffset = project.clipTimelineStart - project.trimStartTime
 
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.03))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    )
+                TimelineTrackBackground()
 
                 // Existing segments. Segments live in source coords; we shift them by
                 // `clipDisplayOffset` so they appear under the clip's current timeline window.

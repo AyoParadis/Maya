@@ -613,7 +613,6 @@ enum AIDirectorBridge {
             trimStart: rounded(trimStart),
             trimEnd: rounded(trimEnd),
             zoomSegments: segments,
-            scores: AIDirectorScores(hook: 72, clarity: 70, pacing: 68),
             warnings: warningText
         )
     }
@@ -690,7 +689,6 @@ enum AIDirectorBridge {
             "trimStart": plan.trimStart,
             "trimEnd": plan.trimEnd,
             "zoomSegments": plan.zoomSegments.map(zoomJSONObject),
-            "scores": scoresJSONObject(plan.scores),
             "warnings": plan.warnings
         ]
     }
@@ -711,14 +709,6 @@ enum AIDirectorBridge {
         return object
     }
 
-    nonisolated private static func scoresJSONObject(_ scores: AIDirectorScores) -> [String: Any] {
-        [
-            "hook": scores.hook,
-            "clarity": scores.clarity,
-            "pacing": scores.pacing
-        ]
-    }
-
     nonisolated private static func parsePlan(from data: Data) throws -> AIDirectorPlan {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw AIDirectorError.invalidJSON
@@ -731,7 +721,6 @@ enum AIDirectorBridge {
             trimStart: try doubleValue("trimStart", in: object),
             trimEnd: try doubleValue("trimEnd", in: object),
             zoomSegments: try zoomSegmentsValue("zoomSegments", in: object),
-            scores: try scoresValue("scores", in: object),
             warnings: try stringArrayValue("warnings", in: object)
         )
     }
@@ -752,17 +741,6 @@ enum AIDirectorBridge {
                 reason: zoom["reason"] as? String
             )
         }
-    }
-
-    nonisolated private static func scoresValue(_ key: String, in object: [String: Any]) throws -> AIDirectorScores {
-        guard let scores = object[key] as? [String: Any] else {
-            throw AIDirectorError.invalidJSON
-        }
-        return AIDirectorScores(
-            hook: try intValue("hook", in: scores),
-            clarity: try intValue("clarity", in: scores),
-            pacing: try intValue("pacing", in: scores)
-        )
     }
 
     nonisolated private static func stringArrayValue(_ key: String, in object: [String: Any]) throws -> [String] {
@@ -930,7 +908,7 @@ enum AIDirectorBridge {
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaVersion", "targetUseCase", "rationale", "trimStart", "trimEnd", "zoomSegments", "scores", "warnings"],
+          "required": ["schemaVersion", "targetUseCase", "rationale", "trimStart", "trimEnd", "zoomSegments", "warnings"],
           "properties": {
             "schemaVersion": { "type": "integer", "const": 1 },
             "targetUseCase": { "type": "string", "const": "socialDemo" },
@@ -953,16 +931,6 @@ enum AIDirectorBridge {
                   "curve": { "type": "string", "enum": ["spring", "bouncy", "smooth", "snappy", "gentle", "linear"] },
                   "reason": { "type": "string" }
                 }
-              }
-            },
-            "scores": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["hook", "clarity", "pacing"],
-              "properties": {
-                "hook": { "type": "integer", "minimum": 0, "maximum": 100 },
-                "clarity": { "type": "integer", "minimum": 0, "maximum": 100 },
-                "pacing": { "type": "integer", "minimum": 0, "maximum": 100 }
               }
             },
             "warnings": { "type": "array", "items": { "type": "string" } }

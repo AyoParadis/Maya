@@ -76,7 +76,8 @@ struct EditorView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: project.selectedAnimationID)
         }
-        .navigationTitle("Maya AI Studio")
+        .navigationTitle(AppChrome.title)
+        .navigationSubtitle(AppChrome.versionLabel)
         .sheet(isPresented: $isShowingAIDirectorCodexDisclosure) {
             AIDirectorCodexDisclosureSheet(
                 onContinue: {
