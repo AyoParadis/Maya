@@ -8,17 +8,15 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selectedMode: StudioMode = .video
+    @State private var selectedMode: StudioMode = .carousel
 
     var body: some View {
-        VStack(spacing: 0) {
-            ModeSwitchBar(selectedMode: $selectedMode)
-
+        Group {
             switch selectedMode {
             case .video:
-                EditorView()
+                EditorView(selectedMode: $selectedMode)
             case .carousel:
-                CarouselStudioView()
+                CarouselStudioView(selectedMode: $selectedMode)
             }
         }
         .frame(minWidth: 1120, minHeight: 720)
@@ -51,25 +49,6 @@ struct StudioModePicker: View {
         .labelsHidden()
         .pickerStyle(.segmented)
         .frame(width: 190)
-    }
-}
-
-private struct ModeSwitchBar: View {
-    @Binding var selectedMode: StudioMode
-
-    var body: some View {
-        HStack {
-            Spacer()
-            StudioModePicker(selectedMode: $selectedMode)
-        }
-        .frame(height: 44)
-        .padding(.horizontal, 18)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.black.opacity(0.08))
-                .frame(height: 1)
-        }
     }
 }
 

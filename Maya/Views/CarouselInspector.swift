@@ -1,7 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct CarouselInspector: View {
     @Bindable var project: CarouselProject
+    let onRegenerateVoiceover: (CarouselCard) -> Void
+    let onRedetectText: (CarouselCard) -> Void
+    let onCleanScript: (CarouselCard) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -11,8 +15,6 @@ struct CarouselInspector: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     selectedCardSection
-                    Divider()
-                    planSection
                 }
                 .padding(18)
             }
@@ -50,7 +52,7 @@ struct CarouselInspector: View {
                 HStack {
                     Label(card.status.label, systemImage: card.status.symbol)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(card.status == .approved ? .green : .secondary)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Text(card.displayName)
                         .font(.caption)
@@ -66,6 +68,7 @@ struct CarouselInspector: View {
                 TextField("CTA", text: $card.cta)
                 TextField("Visual prompt", text: $card.visualPrompt, axis: .vertical)
                     .lineLimit(2...5)
+                narrationSection(for: card)
                 if !card.rationale.isEmpty {
                     Text(card.rationale)
                         .font(.caption)
@@ -90,7 +93,7 @@ struct CarouselInspector: View {
                         .foregroundStyle(.secondary)
                         .font(.caption.monospacedDigit())
                 }
-                Slider(value: $card.duration, in: 0.5...8.0, step: 0.1)
+                Slider(value: $card.duration, in: 0.5...30.0, step: 0.1)
                     .tint(.gray)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -147,36 +150,138 @@ struct CarouselInspector: View {
         }
     }
 
-    private var planSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Plan").font(.headline)
-            if let plan = project.plan {
-                Text(plan.rationale)
-                    .font(.callout)
-                ForEach(plan.cards.prefix(8)) { card in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(card.role)
-                                .font(.caption.weight(.semibold))
-                            Spacer()
-                            Label(card.status.label, systemImage: card.status.symbol)
-                                .labelStyle(.iconOnly)
-                                .foregroundStyle(card.status == .approved ? .green : .secondary)
-                        }
-                        Text(card.reason)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+    private func narrationSection(for card: CarouselCard) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Voiceover")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Label(card.narrationStatus.label, systemImage: card.narrationStatus.symbol)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(narrationStatusColor(card.narrationStatus))
+            }
+
+            if !card.detectedNarrationText.isEmpty {
+                HStack {
+                    Text("Detected text")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        copy(card.detectedNarrationText)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
                     }
-                    .padding(10)
+                    .font(.caption.weight(.medium))
+                    .buttonStyle(.plain)
+                }
+                Text(card.detectedNarrationText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            } else {
-                Text("Create an outline to see slide roles and rationale.")
-                    .font(.callout)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+
+            HStack {
+                Text("Spoken script")
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+                Spacer()
+                if card.narrationScriptEdited {
+                    Label("Edited", systemImage: "pencil")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.blue)
+                }
+            }
+            TextEditor(text: Binding(
+                get: { card.narrationScript },
+                set: { value in
+                    card.narrationScript = value
+                    card.narrationScriptEdited = true
+                }
+            ))
+            .font(.caption)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 110)
+            .padding(6)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.gray.opacity(0.18), lineWidth: 1))
+
+            HStack(spacing: 8) {
+                StudioSmallActionButton(
+                    title: "Copy",
+                    icon: "doc.on.doc",
+                    isEnabled: !card.narrationScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ) {
+                    copy(card.narrationScript)
+                }
+                StudioSmallActionButton(
+                    title: "Clean up",
+                    icon: "wand.and.stars",
+                    isEnabled: !cleanupSource(for: card).isEmpty
+                        && !project.isCleaningNarrationText
+                        && !project.isGeneratingNarration
+                ) {
+                    onCleanScript(card)
+                }
+            }
+
+            HStack(spacing: 8) {
+                StudioSmallActionButton(
+                    title: "Re-detect",
+                    icon: "text.viewfinder",
+                    isEnabled: card.imageURL != nil && !project.isGeneratingNarration
+                ) {
+                    onRedetectText(card)
+                }
+                StudioSmallActionButton(
+                    title: "Regenerate audio",
+                    icon: "waveform.badge.plus",
+                    isEnabled: !project.isGeneratingNarration
+                        && !project.isInstallingPiper
+                        && !project.isCachingVoicePreviews
+                        && !project.isCleaningNarrationText
+                        && !card.narrationScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ) {
+                    onRegenerateVoiceover(card)
+                }
+            }
+
+            if let duration = card.narrationAudioDuration {
+                Text("Audio \(duration, specifier: "%.1f")s")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            if let error = card.narrationError {
+                CopyableMessageBox(text: error, isError: true)
             }
         }
     }
+
+    private func cleanupSource(for card: CarouselCard) -> String {
+        let script = card.narrationScript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return script.isEmpty ? card.detectedNarrationText : script
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func narrationStatusColor(_ status: CarouselSlideNarrationStatus) -> Color {
+        switch status {
+        case .generated: .green
+        case .failed: .red
+        case .skipped: .secondary
+        case .detecting, .generating: .blue
+        case .idle: .secondary
+        }
+    }
+
 }

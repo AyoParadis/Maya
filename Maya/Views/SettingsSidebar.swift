@@ -15,55 +15,66 @@ struct SettingsSidebar: View {
     let isAIDirectorPanelVisible: Bool
 
     @State private var showAdvancedAIDirector = false
+    @State private var voicePreviewSound: NSSound?
+    @State private var isVoiceoverExpanded = true
+    @State private var isRecordingExpanded = true
+    @State private var isAIDirectorExpanded = true
+    @State private var isCanvasExpanded = true
+    @State private var isDeviceExpanded = true
+    @State private var isTransformExpanded = true
+    @State private var isBackgroundExpanded = true
+    @State private var isShadowExpanded = true
+    @State private var isExportExpanded = true
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                StudioSidebarHeader(title: "Video")
-                Divider()
+        StudioSidebarScaffold {
+            StudioSidebarHeader(title: "Video")
+            SidebarDisclosureSection(title: "AI Voiceover", isExpanded: $isVoiceoverExpanded) {
+                narrationSection
+            }
+            SidebarDisclosureSection(title: "Recording", isExpanded: $isRecordingExpanded) {
                 videoSection
-                if project.videoURL != nil {
-                    Divider()
+            }
+            if project.videoURL != nil {
+                SidebarDisclosureSection(title: "AI Director", isExpanded: $isAIDirectorExpanded) {
                     aiDirectorSection
                 }
-                Divider()
-                canvasSection
-                Divider()
-                deviceSection
-                Divider()
-                transformSection
-                Divider()
-                BackgroundPicker(project: project)
-                Divider()
-                shadowSection
-                Divider()
-                exportSection
-                if let error = project.lastExportError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                Spacer(minLength: 12)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
+            SidebarDisclosureSection(title: "Canvas", isExpanded: $isCanvasExpanded) {
+                canvasSection
+            }
+            SidebarDisclosureSection(title: "Device", isExpanded: $isDeviceExpanded) {
+                deviceSection
+            }
+            SidebarDisclosureSection(title: "Size & Position", isExpanded: $isTransformExpanded) {
+                transformSection
+            }
+            SidebarDisclosureSection(title: "Background", isExpanded: $isBackgroundExpanded) {
+                BackgroundPicker(project: project)
+            }
+            SidebarDisclosureSection(title: "Shadow", isExpanded: $isShadowExpanded) {
+                shadowSection
+            }
+            SidebarDisclosureSection(title: "Export", isExpanded: $isExportExpanded) {
+                exportSection
+            }
+            if let error = project.lastExportError {
+                CopyableMessageBox(text: error, isError: true)
+            }
         }
-        .scrollIndicators(.visible)
-        .frame(minWidth: 320, idealWidth: 360)
+        .task {
+            await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+        }
     }
 
     private var deviceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Device").font(.headline)
-                Spacer()
-                if project.deviceModel.kind == .physical || project.deviceModel.kind == .drawn {
-                    Text(project.deviceColor.name)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+            if project.deviceModel.kind == .physical || project.deviceModel.kind == .drawn {
+                Text(project.deviceColor.name)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
             // Model picker — wraps to multiple rows so 5 entries (Off, Generic
@@ -128,9 +139,7 @@ struct SettingsSidebar: View {
 
     private var shadowSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle(isOn: $project.shadow.enabled) {
-                Text("Shadow").font(.headline)
-            }
+            Toggle("Enabled", isOn: $project.shadow.enabled)
             .toggleStyle(.switch)
 
             if project.shadow.enabled {
@@ -218,9 +227,6 @@ struct SettingsSidebar: View {
 
     private var canvasSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Canvas")
-                .font(.headline)
-
             let columns = [GridItem(.adaptive(minimum: 56), spacing: 8)]
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(CanvasAspectRatio.allCases) { aspect in
@@ -241,9 +247,6 @@ struct SettingsSidebar: View {
 
     private var videoSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recording")
-                .font(.headline)
-
             if project.videoURL != nil {
                 Label(project.displayName ?? "Loaded video", systemImage: "film")
                     .lineLimit(1)
@@ -269,9 +272,6 @@ struct SettingsSidebar: View {
 
     private var transformSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Size & Position")
-                .font(.headline)
-
             HStack(spacing: 10) {
                 Image(systemName: "minus.magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -295,9 +295,6 @@ struct SettingsSidebar: View {
 
     private var exportSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Export")
-                .font(.headline)
-
             StudioActionCardButton(
                 title: exportButtonTitle,
                 subtitle: exportSubtitle,
@@ -312,14 +309,89 @@ struct SettingsSidebar: View {
         }
     }
 
+    private var narrationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            StudioVoiceoverControls(
+                voice: $project.piperVoice,
+                isPreviewing: project.isPreviewingVoice,
+                isGenerating: project.isGeneratingNarration,
+                isInstalling: project.isInstallingPiper,
+                isCaching: project.isCachingVoicePreviews,
+                hasNarration: project.narrationAudioURL != nil,
+                shouldShowInstall: shouldShowInstallPiperButton,
+                status: narrationStatusMessage,
+                errorMessage: narrationErrorMessage,
+                onPreview: previewVoice,
+                onRemove: removeNarration,
+                onInstall: installPiper
+            )
+
+            StudioVoiceoverScriptEditor(
+                title: "Script",
+                placeholder: "Write or paste the voiceover script...",
+                text: $project.narrationScript
+            )
+
+            Button {
+                generateNarration()
+            } label: {
+                Label(project.isGeneratingNarration ? "Generating voiceover..." : "Generate voiceover", systemImage: "waveform")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(project.isGeneratingNarration || project.isInstallingPiper || project.isCachingVoicePreviews || project.narrationScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private var narrationStatusMessage: (text: String, icon: String, tint: Color)? {
+        if project.isInstallingPiper {
+            return ("Setting up local voice engine...", "arrow.down.circle", .secondary)
+        }
+        if project.isCachingVoicePreviews {
+            return ("Preparing quick previews in the background...", "bolt.circle", .secondary)
+        }
+        if project.isGeneratingNarration {
+            return ("Generating voiceover...", "waveform", .secondary)
+        }
+        if project.isPreviewingVoice {
+            return ("Playing preview...", "play.circle", .secondary)
+        }
+        if project.narrationAudioURL != nil {
+            return ("Voiceover ready", "checkmark.circle.fill", .green)
+        }
+        if let message = project.narrationMessage, !isErrorMessage(message) {
+            return (message, "info.circle", .secondary)
+        }
+        return nil
+    }
+
+    private var shouldShowInstallPiperButton: Bool {
+        guard let message = project.narrationMessage else { return false }
+        return message.localizedCaseInsensitiveContains("piper is not installed")
+            || message.localizedCaseInsensitiveContains("no module named piper")
+            || message.localizedCaseInsensitiveContains("externally-managed-environment")
+            || message.localizedCaseInsensitiveContains("externally managed")
+    }
+
+    private var narrationErrorMessage: String? {
+        guard let message = project.narrationMessage, isErrorMessage(message) else { return nil }
+        return message
+    }
+
+    private func isErrorMessage(_ message: String) -> Bool {
+        if message.localizedCaseInsensitiveContains("complete:") {
+            return false
+        }
+        return message.localizedCaseInsensitiveContains("error")
+            || message.localizedCaseInsensitiveContains("failed")
+            || message.localizedCaseInsensitiveContains("not installed")
+            || message.localizedCaseInsensitiveContains("no module named")
+            || message.localizedCaseInsensitiveContains("externally-managed")
+    }
+
     private var aiDirectorSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("AI Director")
-                    .font(.headline)
-                Spacer()
-                aiStatusBadge
-            }
+            aiStatusBadge
 
             Label(aiDirectorStatus.isWorking ? aiDirectorStatus.workingTitle : "Local Codex", systemImage: aiDirectorStatus.isWorking ? "wand.and.stars" : "terminal")
                 .font(.caption.weight(.medium))
@@ -368,14 +440,105 @@ struct SettingsSidebar: View {
             .font(.caption.weight(.medium))
 
             if let aiDirectorMessage, !isAIDirectorPanelVisible {
-                Label {
-                    Text(aiDirectorMessage.text)
-                        .font(.caption)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: aiDirectorMessage.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                if aiDirectorMessage.kind == .failure {
+                    CopyableMessageBox(text: aiDirectorMessage.text, isError: true)
+                } else {
+                    CompactStatusMessage(text: aiDirectorMessage.text, icon: "checkmark.circle.fill", tint: .green)
                 }
-                .foregroundStyle(aiDirectorMessage.kind == .success ? .green : .red)
+            }
+        }
+    }
+
+    private func removeNarration() {
+        PiperNarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
+        project.narrationAudioURL = nil
+        project.narrationDisplayName = nil
+        project.narrationMessage = nil
+    }
+
+    private func generateNarration() {
+        guard !project.isGeneratingNarration,
+              !project.isInstallingPiper,
+              !project.isCachingVoicePreviews else { return }
+        let request = PiperNarrationService.Request(
+            text: project.narrationScript,
+            voice: project.piperVoice
+        )
+        project.isGeneratingNarration = true
+        project.narrationMessage = "Generating local Piper narration..."
+
+        Task {
+            do {
+                let url = try await PiperNarrationService.generate(request)
+                await MainActor.run {
+                    PiperNarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
+                    project.narrationAudioURL = url
+                    project.narrationDisplayName = url.lastPathComponent
+                    project.narrationMessage = project.videoURL == nil
+                        ? "Voiceover is ready. Load a recording to include it in export."
+                        : "Voiceover will be included in export."
+                    project.isGeneratingNarration = false
+                }
+                await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+            } catch {
+                await MainActor.run {
+                    project.narrationMessage = error.localizedDescription
+                    project.isGeneratingNarration = false
+                }
+            }
+        }
+    }
+
+    private func previewVoice() {
+        guard !project.isPreviewingVoice,
+              !project.isGeneratingNarration,
+              !project.isInstallingPiper,
+              !project.isCachingVoicePreviews else { return }
+        let request = PiperNarrationService.Request(
+            text: PiperVoiceCatalog.previewText,
+            voice: project.piperVoice
+        )
+        project.isPreviewingVoice = true
+        project.narrationMessage = "Generating voice preview..."
+
+        Task {
+            do {
+                let preview = try await PiperNarrationService.preview(request)
+                await MainActor.run {
+                    voicePreviewSound = NSSound(contentsOf: preview.url, byReference: true)
+                    voicePreviewSound?.play()
+                    project.narrationMessage = preview.usedCache ? "Playing cached preview." : "Preview ready."
+                    project.isPreviewingVoice = false
+                }
+                await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+            } catch {
+                await MainActor.run {
+                    project.narrationMessage = error.localizedDescription
+                    project.isPreviewingVoice = false
+                }
+            }
+        }
+    }
+
+    private func installPiper() {
+        guard !project.isInstallingPiper,
+              !project.isGeneratingNarration,
+              !project.isCachingVoicePreviews else { return }
+        project.isInstallingPiper = true
+        project.narrationMessage = "Installing local voice engine..."
+
+        Task {
+            do {
+                try await PiperNarrationService.installPiper()
+                await MainActor.run {
+                    project.narrationMessage = "Voice engine installed. Previews will warm automatically."
+                    project.isInstallingPiper = false
+                }
+            } catch {
+                await MainActor.run {
+                    project.narrationMessage = error.localizedDescription
+                    project.isInstallingPiper = false
+                }
             }
         }
     }

@@ -5,9 +5,9 @@
 
   **AI screen recording editor for app demos, product videos, device mockups, App Store previews, and social launch clips.**
 
-  Native macOS app that turns `.mp4` and `.mov` screen recordings into polished framed product videos, and turns product image sets into conversion-focused carousel videos and stills. Maya AI Studio adds AI-directed trim and zoom suggestions, carousel planning, device mockups, timeline editing, social aspect ratios, and export tools for makers, designers, and app teams.
+  Native macOS app that turns `.mp4` and `.mov` screen recordings into polished framed product videos, and turns product image sets into conversion-focused carousel videos and stills. Maya AI Studio adds AI-directed trim and zoom suggestions, local Piper voiceovers, carousel OCR, device mockups, timeline editing, social aspect ratios, and export tools for makers, designers, and app teams.
 
-  Current release: **Maya AI Studio 1.0.9**
+  Current release: **Maya AI Studio 2**
 
   ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
@@ -33,7 +33,7 @@ Use Maya AI Studio when you are searching for a:
 - Social media launch video tool for software products.
 - AI-assisted video editor that uses a local Codex CLI workflow.
 - Carousel video maker for Instagram, TikTok, Reels, Shorts, and feed creatives.
-- Social ad carousel builder with local-Codex planning and creative scoring.
+- Social ad carousel builder with local OCR, Piper voiceovers, and fast carousel exports.
 - Transparent background video export tool for app and SaaS demos.
 
 ## Studio modes
@@ -41,7 +41,26 @@ Use Maya AI Studio when you are searching for a:
 Maya AI Studio has two top-level modes:
 
 - **Video** keeps the existing screen-recording editor: device framing, timeline trim, zoom animation, AI Director, background styling, and `.mp4` or transparent `.mov` export.
-- **Carousel** builds social image carousels through a guided pipeline: write a brief, create a local-Codex outline, draft and approve one slide at a time, preview motion, check safe zones, and export approved videos, stills, or bundles.
+- **Carousel** builds social image carousels from imported slides: choose layout and motion, generate/edit per-slide voiceovers, preview timing, check safe zones, and export videos, stills, or bundles.
+
+## Local Piper Narration
+
+Video and Carousel modes include a local narration workflow powered by Piper. Write a voiceover script in Maya, choose a Piper voice such as `en_US-lessac-medium`, generate a `.wav` file locally, and Maya includes that narration track in exported videos.
+
+Maya installs Piper into its own local Python virtual environment in Application Support, then runs Piper from that environment:
+
+```bash
+python3 -m venv "Application Support/Maya AI Studio/PiperEnvironment"
+"Application Support/Maya AI Studio/PiperEnvironment/bin/python" -m pip install --upgrade piper-tts
+```
+
+If Piper is missing when you generate a voiceover, Maya shows an **Install Piper** button in the voiceover panel and runs the local environment setup for you. This avoids changing the system Python installation and works around Homebrew's externally managed Python restrictions. After installation, Maya warms bundled English voice previews automatically in the background so voice browsing gets faster without exposing cache controls.
+
+The voiceover panel includes a Piper voice picker, optional custom voice ID entry, and a **Preview** button that replays cached previews immediately when available. Normal voiceover statuses stay compact, while detailed copyable messages are reserved for errors.
+
+On first generation for a selected non-cached voice, Maya downloads the matching Piper voice files into Application Support, then reuses them for later renders. The default voice is `en_US-lessac-medium`. Generated narration and voice previews stay local; narration is cached until it is replaced, removed, or the current video/carousel project changes.
+
+In Carousel mode, Maya can also generate slide-by-slide voiceovers. Choose **Generate slide voiceovers** to use each slide's planned text first, fall back to local Apple Vision OCR for imported image text, generate one Piper clip per slide, place the clips on the carousel timeline, and automatically extend slide durations to fit the generated audio. The inspector keeps detected text copyable, lets users edit the spoken script, uses the local Codex CLI to clean OCR-damaged grammar and punctuation, and regenerates audio from the edited script without overwriting those manual fixes.
 
 ## AI Director
 
@@ -63,27 +82,21 @@ If Codex is unavailable or the generated plan fails validation, Maya shows an ac
 
 ## Carousel Creative Studio
 
-The **Carousel** mode is designed for Instagram, TikTok, Reels, Shorts, LinkedIn, and feed-oriented image creatives. Create one or more carousel projects, write a source brief, optionally import images by picker or drag-and-drop, choose a target aspect ratio, select a conversion formula, draft slides one at a time, approve the finished sequence, and export the same creative as a motion video, still image set, or structured handoff bundle.
+The **Carousel** mode is designed for Instagram, TikTok, Reels, Shorts, LinkedIn, and feed-oriented image creatives. Create one or more carousel projects, write a source brief, optionally import images by picker or drag-and-drop, choose a target aspect ratio, tune motion, generate slide voiceovers, and export the same creative as a motion video, still image set, or structured handoff bundle.
 
 Carousel mode includes:
 
 - Multiple in-memory carousel projects per session.
 - Aspect presets for `9:16`, `4:5`, `1:1`, and `16:9`.
 - Motion presets: **Still**, **Subtle Zoom**, **Punch Zoom**, **Pan**, and **Auto**.
-- Built-in carousel formulas such as problem/benefit/proof/CTA, before/after/offer, feature-led, app walkthrough, promo/urgency, myth/truth/framework, and checklist/save CTA.
-- A sequential approval pipeline: create outline, draft active slide, regenerate selected slide, approve, and move to the next slide.
+- Editable per-slide voiceover text with copy, Codex cleanup, re-detect, and regenerate controls backed by local Apple Vision OCR.
+- One-button slide voiceover generation that detects text from each carousel slide and places narration on the timeline.
 - Safe-zone overlays for vertical video, feed portrait, and square carousel placements.
-
-### Carousel Director
-
-Carousel Director mirrors the local Codex workflow used by AI Director, but keeps carousel requests intentionally small. Maya writes a run bundle with the brief, compact slide metadata, a JSON schema, and a prompt, then asks the installed `codex` command to generate strict carousel outline or slide-draft JSON. Imported images stay local to rendering and export; carousel Codex runs only receive whether a slide has an image, not the image itself.
-
-Generated carousel outlines define slide roles, ordering, concise copy direction, visual prompts, motion, timing, focal-point hints, and warnings from the local Codex run. Slide drafts are generated one at a time and must be approved before they are treated as export-ready. V1 does **not** generate new image assets; it uses imported images or a simple composed background while storing visual prompts for future image-generation workflows. Plans do **not** delete imported images. If Codex is unavailable, Maya applies a deterministic fallback outline or slide draft based on the selected formula and current card order.
 
 ## What Maya AI Studio Adds
 
 - AI Director for local-Codex edit planning, editable retries, plan version history, preview, and fallback generation.
-- Carousel Creative Studio for brief-to-carousel pipelines, local-Codex outlining, per-slide drafting and approval, safe-zone preview, and batch-friendly exports.
+- Carousel Creative Studio for imported image carousels, local OCR, editable per-slide voiceovers, safe-zone preview, and batch-friendly exports.
 - Behavioral-science defaults for short social demos: early hook, dead-time removal, clear problem/action/result arc, soft attention cues, and outcome-focused endings.
 - Calm AI zoom profiles, including **Barely There** motion for premium, understated product demos.
 - A broader device catalog with iPhone Pro frames, MacBook Pro 14, generic phone, classic phone, Android-style phone, tablet, laptop, and no-frame modes.
@@ -91,6 +104,7 @@ Generated carousel outlines define slide roles, ordering, concise copy direction
 - Generic and no-frame styling controls for corner radius, bezel width, bezel color, and shadows.
 - Timeline editing with draggable clip trimming, independent clip timeline positioning, zoom blocks, edge resizing, and playhead snapping.
 - Inline side-panel animation editing with live canvas updates.
+- Local Piper narration generation in Video and Carousel modes for adding voiceover audio to exported videos.
 - Bundled animation preset preview videos.
 - Social-ready `.mp4` export and transparent HEVC-with-alpha `.mov` export.
 - Carousel `.mp4`, still image set, and export bundle output for social/ad handoff workflows.
@@ -128,8 +142,7 @@ Generated carousel outlines define slide roles, ordering, concise copy direction
 - Manage multiple carousel projects in one session.
 - Drag thumbnails to reorder the story.
 - Edit per-card role, badge, headline, subtitle, CTA, visual prompt, duration, and motion.
-- Generate a local-Codex outline that plans slide order, roles, copy direction, visual prompts, motion, CTA placement, and creative warnings.
-- Draft, regenerate, and approve slides one at a time so finished slides stay locked while the next slide is created.
+- Generate local Piper voiceovers for every slide from visible text, OCR, or edited spoken scripts.
 - Preview still, zoom, punch, pan, or auto-selected motion before export.
 
 ### Common use cases
@@ -147,8 +160,9 @@ Generated carousel outlines define slide roles, ordering, concise copy direction
 
 - Export social-ready `.mp4` files using the selected canvas aspect.
 - Export transparent `.mov` files with HEVC alpha when the background is set to none.
-- Exported videos include device frame, background, shadows, trim, and zoom animation.
-- In Carousel mode, export H.264 `.mp4` slideshow videos at 30 FPS.
+- Exported videos include device frame, background, shadows, trim, zoom animation, and optional Piper narration.
+- In Carousel mode, export H.264 `.mp4` slideshow videos with optional project-level or per-slide Piper narration. Carousel video quality presets include **Draft** (very low quality, fastest timing checks), **Fast**, **Standard**, and **High**.
+- Cancel active carousel video or bundle exports from the Export panel. Maya cancels the writer, removes incomplete output files, and reports stalled generated-frame exports with copyable diagnostics instead of leaving a 0-byte file.
 - Export matching `.png` still image sets for carousel uploads.
 - Export a bundle folder containing the video, still images, `carousel-brief.json`, `carousel-outline.json`, `slides.json`, `copy.txt`, and a handoff `README.txt`.
 
@@ -169,11 +183,12 @@ Generated carousel outlines define slide roles, ordering, concise copy direction
 
 - SwiftUI and AppKit
 - AVFoundation custom video composition
-- AVAssetWriter image-sequence export for carousel videos
+- AVAssetWriter generated-frame export for carousel videos, with concurrent video/audio writer inputs, cancel support, and stall detection
 - Core Image and Metal compositing
 - HEVC-with-alpha export support
 - Swift Observation and async/await
 - Sandboxed local video and image adoption for reliable preview and export access
+- Piper TTS integration through the local `python3 -m piper` command
 
 ## Requirements
 
@@ -181,22 +196,42 @@ Generated carousel outlines define slide roles, ordering, concise copy direction
 - Xcode 26.5 or later
 - `.mp4` or `.mov` screen recording
 - Images for Carousel mode, or a `.mp4`/`.mov` screen recording for Video mode
-- Codex CLI installed and signed in for AI Director and Carousel Director generation
+- Codex CLI installed and signed in for AI Director and carousel script cleanup
 - A Codex account/subscription for local Codex CLI usage
+- Optional: Piper installed through Maya's **Install Piper** button for local narration generation
 
 ## Releases
 
-The latest installable Maya AI Studio release is **Maya AI Studio 1.0.9**:
+The latest installable Maya AI Studio release is **Maya AI Studio 2**:
 
-[Download Maya AI Studio 1.0.9](https://github.com/AyoParadis/Maya/releases/tag/v1.0.9)
+[Download Maya AI Studio 2](https://github.com/AyoParadis/Maya/releases/tag/v2.0.0)
+
+### Maya AI Studio 2
+
+- Makes Carousel the default mode and refocuses it around imported slides, motion, local OCR, and one-button AI voiceovers.
+- Adds local Piper voiceover generation in both Video and Carousel, including automatic Piper setup, automatic English preview warming, custom voice IDs, cached previews, and compact status/error handling.
+- Adds carousel per-slide voiceovers that read visible slide text, fall back to local Apple Vision OCR, generate one audio clip per slide, align clips on the timeline, and extend slide durations to fit narration.
+- Adds editable slide narration in the inspector: copy detected text, edit the spoken script, clean OCR-damaged grammar and punctuation through the local Codex CLI, and regenerate audio from the edited script.
+- Improves carousel OCR cleanup with local preprocessing, artifact filtering, watermark/handle filtering, and cached OCR results.
+- Rebuilds Carousel export around a reliable generated-frame `AVAssetWriter` pipeline with explicit phases, real progress, cancellation, partial-file cleanup, stalled-export diagnostics, and video quality presets from **Draft** through **High**.
+- Reorganizes Carousel export controls so Video, Images, and Bundle appear as equal format choices, with active export progress shown only while work is running.
+- Adds timeline voiceover blocks and left-click action menus for cards, voiceovers, and motion, while keeping drag-to-reorder behavior so attached audio moves with its slide.
+- Cleans up the app chrome and sidebars with a native macOS split-view sidebar, shared Video/Carousel AI Voiceover components, collapsible tinted sections, cleaner spacing, and the Video/Carousel switch in the titlebar.
+- Removes the old Carousel Director/draft/approval workflow so Carousel is simpler, faster, and local-first: imported images stay on device, OCR runs locally, and Codex is only used for optional script cleanup.
 
 ### Maya AI Studio 1.0.9
 
-- Adds Carousel Creative Studio for image carousel projects with local-Codex outlining, per-slide drafting, approval, motion preview, safe-zone review, and export to video, still images, or structured bundles.
+- Adds Carousel Creative Studio for image carousel projects with motion preview, safe-zone review, AI voiceover generation, and export to video, still images, or structured bundles.
+- Moves the Video/Carousel switch into the macOS titlebar and cleans up the AI voiceover sidebars so the app uses less vertical space and hides technical cache details.
+- Makes Piper preview caching automatic and keeps carousel slide voiceover generation responsive with cached OCR results and per-slide failure handling.
+- Improves carousel voiceover cleanup with editable spoken scripts, copyable detected text, stronger local OCR preprocessing, and regenerate-from-edited-script behavior.
+- Improves carousel export feedback and performance by moving video export work off the UI thread, showing export phases, reusing decoded slide images, reusing writer pixel buffers during frame generation, and pumping carousel video/audio writer inputs concurrently.
+- Reorganizes Carousel export controls so Video, Images, and Bundle appear as equal format choices, with the large progress treatment reserved only for active exports.
+- Adds Carousel video quality presets, including a very low quality Draft mode for quick tests, plus cancel support and stalled-export diagnostics.
 - Updates carousel mode to match video mode's macOS header behavior, with the app title, build label, and a single working sidebar toggle in the titlebar.
 - Reuses the video editor's canvas background and timeline chrome in carousel mode so empty canvases and carousel tracks stay readable and visually consistent.
-- Adds carousel import, rendering, image adoption, AI planning, and export services for the new carousel workflow.
-- Keeps carousel editing local-first: imported images stay on device, and Carousel Director only sends compact slide metadata to the user's local Codex CLI workflow.
+- Adds carousel import, rendering, image adoption, narration, and export services for the carousel workflow.
+- Keeps carousel editing local-first: imported images stay on device, OCR runs locally, and Codex is only used for optional script cleanup.
 
 ### Maya AI Studio 1.0.8
 

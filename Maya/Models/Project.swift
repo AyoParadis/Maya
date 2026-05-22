@@ -88,6 +88,16 @@ final class Project {
     var exportProgress: Double = 0
     var lastExportError: String?
 
+    var narrationScript: String = ""
+    var piperVoice: String = PiperNarrationService.defaultVoice
+    var narrationAudioURL: URL?
+    var narrationDisplayName: String?
+    var isGeneratingNarration: Bool = false
+    var isInstallingPiper: Bool = false
+    var isCachingVoicePreviews: Bool = false
+    var isPreviewingVoice: Bool = false
+    var narrationMessage: String?
+
     var isMuted: Bool = true {
         didSet { player?.isMuted = isMuted }
     }
@@ -101,6 +111,7 @@ final class Project {
             player.removeTimeObserver(observer)
         }
         Self.cleanupCachedSource(at: videoURL)
+        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
     }
 
     var durationSeconds: Double {
@@ -367,6 +378,10 @@ final class Project {
         self.clipTimelineStart = 0
         self.currentSeconds = 0
         self.isPlaying = true
+        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
+        self.narrationAudioURL = nil
+        self.narrationDisplayName = nil
+        self.narrationMessage = nil
 
         // Now safe to remove the previous working copy.
         Self.cleanupCachedSource(at: previousURL)

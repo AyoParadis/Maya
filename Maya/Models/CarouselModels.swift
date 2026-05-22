@@ -32,53 +32,9 @@ enum CarouselMotionPreset: String, Codable, CaseIterable, Identifiable, Sendable
     }
 }
 
-enum CarouselFormula: String, Codable, CaseIterable, Identifiable, Sendable {
-    case problemBenefitProofFeaturesCTA
-    case beforeAfterHowItWorksTestimonialOffer
-    case hookFeaturesProofCTA
-    case appWalkthroughResultObjectionCTA
-    case promoValueUrgencyCTA
-    case mythTruthFrameworkCTA
-    case checklistSaveCTA
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .problemBenefitProofFeaturesCTA: "Problem -> Benefit -> Proof -> Features -> CTA"
-        case .beforeAfterHowItWorksTestimonialOffer: "Before -> After -> How It Works -> Testimonial -> Offer"
-        case .hookFeaturesProofCTA: "Hook -> Features -> Proof -> CTA"
-        case .appWalkthroughResultObjectionCTA: "App Walkthrough -> Result -> Objection -> CTA"
-        case .promoValueUrgencyCTA: "Promo -> Value -> Urgency -> CTA"
-        case .mythTruthFrameworkCTA: "Myth -> Truth -> Framework -> CTA"
-        case .checklistSaveCTA: "Checklist -> Save CTA"
-        }
-    }
-
-    var roles: [String] {
-        switch self {
-        case .problemBenefitProofFeaturesCTA:
-            return ["Problem", "Benefit", "Proof", "Feature", "CTA"]
-        case .beforeAfterHowItWorksTestimonialOffer:
-            return ["Before", "After", "How it works", "Testimonial", "Offer"]
-        case .hookFeaturesProofCTA:
-            return ["Hook", "Feature", "Feature", "Feature", "Social proof", "CTA"]
-        case .appWalkthroughResultObjectionCTA:
-            return ["Walkthrough", "Result", "Objection", "CTA"]
-        case .promoValueUrgencyCTA:
-            return ["Promo", "Value", "Urgency", "CTA"]
-        case .mythTruthFrameworkCTA:
-            return ["Hook", "Myth", "Truth", "Framework", "Example", "CTA"]
-        case .checklistSaveCTA:
-            return ["Hook", "Checklist", "Checklist", "Checklist", "Checklist", "Takeaway", "Save CTA"]
-        }
-    }
-}
-
 enum CarouselSlideStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case planned
     case drafted
-    case approved
 
     var id: String { rawValue }
 
@@ -86,7 +42,6 @@ enum CarouselSlideStatus: String, Codable, CaseIterable, Identifiable, Sendable 
         switch self {
         case .planned: "Planned"
         case .drafted: "Drafted"
-        case .approved: "Approved"
         }
     }
 
@@ -94,19 +49,39 @@ enum CarouselSlideStatus: String, Codable, CaseIterable, Identifiable, Sendable 
         switch self {
         case .planned: "list.bullet.rectangle"
         case .drafted: "pencil.and.scribble"
-        case .approved: "checkmark.circle.fill"
         }
     }
 }
 
-enum CarouselPipelineState: String, Codable, Sendable {
-    case needsBrief
-    case readyForOutline
-    case outlining
-    case readyForDraft
-    case draftingSlide
-    case reviewingSlide
-    case complete
+enum CarouselSlideNarrationStatus: String, Codable, Sendable {
+    case idle
+    case detecting
+    case generating
+    case generated
+    case skipped
+    case failed
+
+    var label: String {
+        switch self {
+        case .idle: "Not generated"
+        case .detecting: "Detecting text"
+        case .generating: "Generating"
+        case .generated: "Generated"
+        case .skipped: "Skipped"
+        case .failed: "Failed"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .idle: "waveform"
+        case .detecting: "text.viewfinder"
+        case .generating: "waveform"
+        case .generated: "checkmark.circle.fill"
+        case .skipped: "minus.circle"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
 }
 
 struct CarouselBrief: Codable, Equatable, Sendable {
@@ -116,7 +91,6 @@ struct CarouselBrief: Codable, Equatable, Sendable {
     var platform: String
     var brandName: String
     var brandHex: String
-    var formula: CarouselFormula
 
     static let empty = CarouselBrief(
         sourceContent: "",
@@ -124,8 +98,7 @@ struct CarouselBrief: Codable, Equatable, Sendable {
         goal: "Drive saves and qualified clicks",
         platform: "Instagram / LinkedIn",
         brandName: "",
-        brandHex: "#6466FA",
-        formula: .hookFeaturesProofCTA
+        brandHex: "#6466FA"
     )
 }
 
@@ -147,43 +120,57 @@ enum CarouselSafeZonePreset: String, Codable, CaseIterable, Identifiable, Sendab
     }
 }
 
-struct CarouselCardPlan: Codable, Identifiable, Equatable, Sendable {
-    var id: UUID
-    var role: String
-    var headline: String
-    var subtitle: String
-    var cta: String
-    var badge: String
-    var visualPrompt: String
-    var status: CarouselSlideStatus
-    var duration: Double
-    var motion: CarouselMotionPreset
-    var focalX: Double
-    var focalY: Double
-    var reason: String
-}
+enum CarouselExportQuality: String, Codable, CaseIterable, Identifiable, Sendable {
+    case draft
+    case fast
+    case standard
+    case high
 
-struct CarouselCreativePlan: Codable, Identifiable, Equatable, Sendable {
-    var id: UUID = UUID()
-    var schemaVersion: Int
-    var targetUseCase: String
-    var rationale: String
-    var orderedCardIDs: [UUID]
-    var cards: [CarouselCardPlan]
-    var warnings: [String]
-}
+    var id: String { rawValue }
 
-struct CarouselValidationIssue: Identifiable, Hashable, Sendable {
-    enum Severity: String, Hashable, Sendable {
-        case info
-        case warning
-        case problem
+    var label: String {
+        switch self {
+        case .draft: "Draft"
+        case .fast: "Fast"
+        case .standard: "Standard"
+        case .high: "High"
+        }
     }
 
-    let id = UUID()
-    var severity: Severity
-    var cardID: UUID?
-    var message: String
+    var detail: String {
+        switch self {
+        case .draft: "960p max"
+        case .fast: "720p-ish"
+        case .standard: "1080p"
+        case .high: "Full"
+        }
+    }
+
+    var useCase: String {
+        switch self {
+        case .draft: "Fastest timing check"
+        case .fast: "Quick share preview"
+        case .standard: "Recommended export"
+        case .high: "Best final quality"
+        }
+    }
+
+    var fps: Int32 {
+        switch self {
+        case .draft: 15
+        case .fast: 24
+        case .standard, .high: 30
+        }
+    }
+
+    var maxLongEdge: CGFloat {
+        switch self {
+        case .draft: 960
+        case .fast: 1280
+        case .standard: 1920
+        case .high: 2688
+        }
+    }
 }
 
 @Observable
@@ -202,6 +189,13 @@ final class CarouselCard: Identifiable, Hashable {
     var focalPoint: CGPoint
     var duration: Double
     var motionOverride: CarouselMotionPreset?
+    var detectedNarrationText: String
+    var narrationScript: String
+    var narrationScriptEdited: Bool
+    var narrationAudioURL: URL?
+    var narrationAudioDuration: Double?
+    var narrationStatus: CarouselSlideNarrationStatus
+    var narrationError: String?
 
     init(
         id: UUID = UUID(),
@@ -217,7 +211,14 @@ final class CarouselCard: Identifiable, Hashable {
         status: CarouselSlideStatus = .planned,
         focalPoint: CGPoint = CGPoint(x: 0.5, y: 0.5),
         duration: Double = 2.0,
-        motionOverride: CarouselMotionPreset? = nil
+        motionOverride: CarouselMotionPreset? = nil,
+        detectedNarrationText: String = "",
+        narrationScript: String = "",
+        narrationScriptEdited: Bool = false,
+        narrationAudioURL: URL? = nil,
+        narrationAudioDuration: Double? = nil,
+        narrationStatus: CarouselSlideNarrationStatus = .idle,
+        narrationError: String? = nil
     ) {
         self.id = id
         self.imageURL = imageURL
@@ -233,6 +234,13 @@ final class CarouselCard: Identifiable, Hashable {
         self.focalPoint = focalPoint
         self.duration = duration
         self.motionOverride = motionOverride
+        self.detectedNarrationText = detectedNarrationText
+        self.narrationScript = narrationScript
+        self.narrationScriptEdited = narrationScriptEdited
+        self.narrationAudioURL = narrationAudioURL
+        self.narrationAudioDuration = narrationAudioDuration
+        self.narrationStatus = narrationStatus
+        self.narrationError = narrationError
     }
 
     static func == (lhs: CarouselCard, rhs: CarouselCard) -> Bool {
@@ -253,12 +261,20 @@ final class CarouselProject: Identifiable {
     var canvasAspect: CanvasAspectRatio
     var motionPreset: CarouselMotionPreset
     var brief: CarouselBrief
-    var pipelineState: CarouselPipelineState
     var safeZonePreset: CarouselSafeZonePreset
+    var exportQuality: CarouselExportQuality
     var defaultCardDuration: Double
     var showSafeZones: Bool
-    var plan: CarouselCreativePlan?
-    var validationIssues: [CarouselValidationIssue]
+    var narrationScript: String
+    var piperVoice: String
+    var narrationAudioURL: URL?
+    var narrationDisplayName: String?
+    var isGeneratingNarration: Bool
+    var isInstallingPiper: Bool
+    var isCachingVoicePreviews: Bool
+    var isPreviewingVoice: Bool
+    var isCleaningNarrationText: Bool
+    var narrationMessage: String?
 
     init(
         id: UUID = UUID(),
@@ -269,20 +285,30 @@ final class CarouselProject: Identifiable {
         self.title = title
         self.cards = cards
         self.selectedCardID = cards.first?.id
-        self.canvasAspect = .vertical9x16
+        self.canvasAspect = .square
         self.motionPreset = .auto
         self.brief = .empty
-        self.pipelineState = .needsBrief
         self.safeZonePreset = .auto
+        self.exportQuality = .draft
         self.defaultCardDuration = 2.0
-        self.showSafeZones = true
-        self.plan = nil
-        self.validationIssues = []
+        self.showSafeZones = false
+        self.narrationScript = ""
+        self.piperVoice = PiperNarrationService.defaultVoice
+        self.narrationAudioURL = nil
+        self.narrationDisplayName = nil
+        self.isGeneratingNarration = false
+        self.isInstallingPiper = false
+        self.isCachingVoicePreviews = false
+        self.isPreviewingVoice = false
+        self.isCleaningNarrationText = false
+        self.narrationMessage = nil
     }
 
-    var formula: CarouselFormula {
-        get { brief.formula }
-        set { brief.formula = newValue }
+    deinit {
+        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
+        for card in cards {
+            PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+        }
     }
 
     var brandName: String {
@@ -300,17 +326,16 @@ final class CarouselProject: Identifiable {
         return cards.first { $0.id == selectedCardID } ?? cards.first
     }
 
-    var approvedCards: [CarouselCard] {
-        cards.filter { $0.status == .approved }
-    }
-
     var exportCards: [CarouselCard] {
-        let approved = approvedCards
-        return approved.isEmpty ? cards : approved
+        cards
     }
 
-    var activePipelineCard: CarouselCard? {
-        cards.first { $0.status != .approved } ?? cards.first
+    var narratedCards: [CarouselCard] {
+        exportCards.filter { $0.narrationAudioURL != nil }
+    }
+
+    var hasSlideNarration: Bool {
+        !narratedCards.isEmpty
     }
 
     var totalDuration: Double {
@@ -379,13 +404,26 @@ final class CarouselProject: Identifiable {
 
     func removeSelectedCard() {
         guard let selectedCardID else { return }
-        cards.removeAll { $0.id == selectedCardID }
-        self.selectedCardID = cards.first?.id
+        removeCard(id: selectedCardID)
+    }
+
+    func removeCard(id: UUID) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
+        PiperNarrationService.cleanupGeneratedNarration(at: cards[index].narrationAudioURL)
+        cards.remove(at: index)
+        if selectedCardID == id {
+            selectedCardID = cards.isEmpty ? nil : cards[max(0, min(index, cards.count - 1))].id
+        }
         validate()
     }
 
     func duplicateSelectedCard() {
         guard let selected = selectedCard else { return }
+        duplicateCard(id: selected.id)
+    }
+
+    func duplicateCard(id: UUID) {
+        guard let selected = cards.first(where: { $0.id == id }) else { return }
         let copy = CarouselCard(
             imageURL: selected.imageURL,
             displayName: "\(selected.displayName) copy",
@@ -404,6 +442,33 @@ final class CarouselProject: Identifiable {
         let index = (cards.firstIndex { $0.id == selected.id } ?? cards.count - 1) + 1
         cards.insert(copy, at: min(index, cards.count))
         selectedCardID = copy.id
+        validate()
+    }
+
+    func removeVoiceover(for cardID: UUID) {
+        guard let card = cards.first(where: { $0.id == cardID }) else { return }
+        PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+        card.detectedNarrationText = ""
+        card.narrationScript = ""
+        card.narrationScriptEdited = false
+        card.narrationAudioURL = nil
+        card.narrationAudioDuration = nil
+        card.narrationStatus = .idle
+        card.narrationError = nil
+        validate()
+    }
+
+    func moveCardEarlier(id: UUID) {
+        guard let index = cards.firstIndex(where: { $0.id == id }), index > 0 else { return }
+        cards.swapAt(index, index - 1)
+        selectedCardID = id
+        validate()
+    }
+
+    func moveCardLater(id: UUID) {
+        guard let index = cards.firstIndex(where: { $0.id == id }), index < cards.count - 1 else { return }
+        cards.swapAt(index, index + 1)
+        selectedCardID = id
         validate()
     }
 
@@ -427,105 +492,19 @@ final class CarouselProject: Identifiable {
         validate()
     }
 
-    func applyOutline(_ plan: CarouselCreativePlan) {
-        let existingByID = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
-        var created: [CarouselCard] = []
-        for cardPlan in plan.cards where existingByID[cardPlan.id] == nil {
-            created.append(
-                CarouselCard(
-                    id: cardPlan.id,
-                    displayName: cardPlan.role.isEmpty ? "Slide \(created.count + 1)" : cardPlan.role,
-                    role: cardPlan.role,
-                    headline: cardPlan.headline,
-                    subtitle: cardPlan.subtitle,
-                    cta: cardPlan.cta,
-                    badge: cardPlan.badge,
-                    visualPrompt: cardPlan.visualPrompt,
-                    rationale: cardPlan.reason,
-                    status: cardPlan.status,
-                    duration: max(0.5, min(8.0, cardPlan.duration)),
-                    motionOverride: cardPlan.motion
-                )
-            )
+    func moveCard(from source: UUID, toPositionOf target: UUID) {
+        guard source != target,
+              let sourceIndex = cards.firstIndex(where: { $0.id == source }),
+              let targetIndex = cards.firstIndex(where: { $0.id == target }) else {
+            return
         }
-        let allCards = cards + created
-        let allByID = Dictionary(uniqueKeysWithValues: allCards.map { ($0.id, $0) })
-        let ordered = plan.orderedCardIDs.compactMap { allByID[$0] }
-        let leftovers = allCards.filter { !plan.orderedCardIDs.contains($0.id) }
-        cards = ordered + leftovers
-
-        for cardPlan in plan.cards {
-            guard let card = cards.first(where: { $0.id == cardPlan.id }) else { continue }
-            card.role = cardPlan.role
-            card.headline = cardPlan.headline
-            card.subtitle = cardPlan.subtitle
-            card.cta = cardPlan.cta
-            card.badge = cardPlan.badge
-            card.visualPrompt = cardPlan.visualPrompt
-            card.rationale = cardPlan.reason
-            card.status = cardPlan.status
-            card.duration = max(0.5, min(8.0, cardPlan.duration))
-            card.motionOverride = cardPlan.motion
-            card.focalPoint = CGPoint(
-                x: max(0, min(1, cardPlan.focalX)),
-                y: max(0, min(1, cardPlan.focalY))
-            )
-        }
-
-        self.plan = plan
-        selectedCardID = activePipelineCard?.id ?? cards.first?.id
-        pipelineState = cards.isEmpty ? .readyForOutline : .readyForDraft
-        validate(extraWarnings: plan.warnings)
-    }
-
-    func apply(plan: CarouselCreativePlan) {
-        applyOutline(plan)
-    }
-
-    func applySlideDraft(_ cardPlan: CarouselCardPlan) {
-        guard let card = cards.first(where: { $0.id == cardPlan.id }) else { return }
-        card.role = cardPlan.role
-        card.headline = cardPlan.headline
-        card.subtitle = cardPlan.subtitle
-        card.cta = cardPlan.cta
-        card.badge = cardPlan.badge
-        card.visualPrompt = cardPlan.visualPrompt
-        card.rationale = cardPlan.reason
-        card.status = .drafted
-        card.duration = max(0.5, min(8.0, cardPlan.duration))
-        card.motionOverride = cardPlan.motion
-        card.focalPoint = CGPoint(x: max(0, min(1, cardPlan.focalX)), y: max(0, min(1, cardPlan.focalY)))
-        if var plan {
-            if let cardIndex = plan.cards.firstIndex(where: { $0.id == cardPlan.id }) {
-                plan.cards[cardIndex] = cardPlan
-            } else {
-                plan.cards.append(cardPlan)
-                plan.orderedCardIDs.append(cardPlan.id)
-            }
-            self.plan = plan
-        }
-        selectedCardID = card.id
-        pipelineState = .reviewingSlide
+        let card = cards.remove(at: sourceIndex)
+        cards.insert(card, at: max(0, min(targetIndex, cards.count)))
+        selectedCardID = source
         validate()
     }
 
-    func approveSelectedSlide() {
-        guard let card = selectedCard else { return }
-        card.status = .approved
-        if var plan,
-           let cardIndex = plan.cards.firstIndex(where: { $0.id == card.id }) {
-            plan.cards[cardIndex].status = .approved
-            self.plan = plan
-        }
-        selectedCardID = activePipelineCard?.id ?? card.id
-        pipelineState = cards.allSatisfy { $0.status == .approved } ? .complete : .readyForDraft
-        validate()
-    }
-
-    func validate(extraWarnings: [String] = []) {
-        validationIssues = extraWarnings.map {
-            CarouselValidationIssue(severity: .info, cardID: nil, message: $0)
-        }
+    func validate() {
     }
 }
 
@@ -535,10 +514,24 @@ final class CarouselWorkspace {
     var selectedProjectID: UUID?
     var isExporting: Bool = false
     var exportProgress: Double = 0
+    var exportStatus: String = ""
+    var exportDetail: String = ""
+    var exportDestinationName: String = ""
+    var activeExportTask: Task<Void, Never>?
     var lastMessage: String?
     var lastError: String?
-    var isGeneratingPlan: Bool = false
-    var runDirectory: URL?
+
+    func cancelExport() {
+        activeExportTask?.cancel()
+        activeExportTask = nil
+        isExporting = false
+        exportProgress = 0
+        exportStatus = ""
+        exportDetail = ""
+        exportDestinationName = ""
+        lastMessage = "Export canceled."
+        lastError = nil
+    }
 
     init() {
         let first = CarouselProject(title: "Launch Carousel")

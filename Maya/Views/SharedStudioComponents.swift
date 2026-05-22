@@ -1,5 +1,30 @@
 import SwiftUI
 
+enum StudioSidebarMetrics {
+    static let width: CGFloat = 360
+    static let minWidth: CGFloat = 320
+    static let outerPadding: CGFloat = 18
+    static let sectionSpacing: CGFloat = 16
+    static let bottomSpacer: CGFloat = 12
+}
+
+struct StudioSidebarScaffold<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: StudioSidebarMetrics.sectionSpacing) {
+                content()
+                Spacer(minLength: StudioSidebarMetrics.bottomSpacer)
+            }
+            .padding(.horizontal, StudioSidebarMetrics.outerPadding)
+            .padding(.vertical, StudioSidebarMetrics.outerPadding)
+        }
+        .scrollIndicators(.visible)
+        .frame(minWidth: StudioSidebarMetrics.minWidth, idealWidth: StudioSidebarMetrics.width)
+    }
+}
+
 struct StudioSidebarHeader: View {
     var title = "Maya AI Studio"
 
@@ -21,6 +46,235 @@ struct StudioSidebarHeader: View {
             return "v\(version) (\(build))"
         }
         return "v\(version)"
+    }
+}
+
+struct SidebarDisclosureSection<Content: View>: View {
+    let title: String
+    @Binding var isExpanded: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .frame(width: 16, height: 16)
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                .padding(.horizontal, 12)
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Collapse \(title)" : "Expand \(title)")
+
+            if isExpanded {
+                content()
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .padding(.top, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(sectionFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .clipped()
+    }
+
+    private var sectionFill: Color {
+        #if os(macOS)
+        Color(nsColor: .controlBackgroundColor).opacity(isExpanded ? 0.86 : 0.68)
+        #else
+        Color.primary.opacity(isExpanded ? 0.045 : 0.03)
+        #endif
+    }
+}
+
+struct CompactStatusMessage: View {
+    let text: String
+    var icon = "checkmark.circle.fill"
+    var tint = Color.secondary
+
+    var body: some View {
+        Label(text, systemImage: icon)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(tint)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct PiperVoiceSelector: View {
+    @Binding var voice: String
+
+    private let customVoiceTag = "__maya_custom_piper_voice__"
+
+    private var catalogVoiceIDs: Set<String> {
+        Set(PiperVoiceCatalog.voices.map(\.id))
+    }
+
+    private var isCustomVoice: Bool {
+        !voice.isEmpty && !catalogVoiceIDs.contains(voice)
+    }
+
+    private var pickerSelection: Binding<String> {
+        Binding {
+            isCustomVoice || voice.isEmpty ? customVoiceTag : voice
+        } set: { newValue in
+            if newValue == customVoiceTag {
+                if !isCustomVoice {
+                    voice = ""
+                }
+            } else {
+                voice = newValue
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("AI voice")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Picker("AI voice", selection: pickerSelection) {
+                ForEach(PiperVoiceCatalog.voices) { voice in
+                    Text(voice.displayName).tag(voice.id)
+                }
+                Divider()
+                Text("Custom voice ID...").tag(customVoiceTag)
+            }
+            .labelsHidden()
+
+            if isCustomVoice || voice.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Piper voice ID")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    TextField(PiperNarrationService.defaultVoice, text: $voice)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+                        .help("Type any Piper voice ID, including voices not listed above")
+                }
+            }
+        }
+    }
+}
+
+struct StudioVoiceoverControls: View {
+    @Binding var voice: String
+    let isPreviewing: Bool
+    let isGenerating: Bool
+    let isInstalling: Bool
+    let isCaching: Bool
+    let hasNarration: Bool
+    let shouldShowInstall: Bool
+    let status: (text: String, icon: String, tint: Color)?
+    let errorMessage: String?
+    let onPreview: () -> Void
+    let onRemove: () -> Void
+    let onInstall: () -> Void
+
+    private var isBusy: Bool {
+        isPreviewing || isGenerating || isInstalling || isCaching
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PiperVoiceSelector(voice: $voice)
+
+            HStack(spacing: 8) {
+                Button(action: onPreview) {
+                    Label(isPreviewing ? "Previewing..." : "Preview", systemImage: "play.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(isBusy)
+
+                Button(action: onRemove) {
+                    Image(systemName: "trash")
+                        .frame(width: 30)
+                }
+                .disabled(!hasNarration || isGenerating)
+                .help("Remove voiceover")
+            }
+
+            if shouldShowInstall {
+                Button(action: onInstall) {
+                    Label(isInstalling ? "Installing voice engine..." : "Install voice engine", systemImage: "arrow.down.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(isInstalling || isCaching || isGenerating)
+                .help("Create Maya's local Piper environment and install piper-tts")
+            }
+
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            if let status {
+                CompactStatusMessage(text: status.text, icon: status.icon, tint: status.tint)
+            }
+
+            if let errorMessage {
+                CopyableMessageBox(text: errorMessage, isError: true)
+            }
+        }
+    }
+}
+
+struct StudioVoiceoverScriptEditor: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $text)
+                    .font(.callout)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 92)
+                    .padding(6)
+
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.callout)
+                        .foregroundStyle(.secondary.opacity(0.75))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 14)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.10)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.18), lineWidth: 1))
+        }
     }
 }
 
@@ -206,8 +460,8 @@ struct StudioActionCardButton: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                accent.opacity(isEnabled ? 1.0 : 0.45),
-                                accentDark.opacity(isEnabled ? 1.0 : 0.45)
+                                accent.opacity(isVisuallyActive ? 1.0 : 0.45),
+                                accentDark.opacity(isVisuallyActive ? 1.0 : 0.45)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -215,10 +469,10 @@ struct StudioActionCardButton: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.white.opacity(isEnabled ? 0.22 : 0.08), lineWidth: 1)
+                            .stroke(Color.white.opacity(isVisuallyActive ? 0.22 : 0.08), lineWidth: 1)
                     )
                     .shadow(
-                        color: accent.opacity(isEnabled && isHovering ? 0.45 : 0.25),
+                        color: accent.opacity(isVisuallyActive && isHovering ? 0.45 : 0.25),
                         radius: isHovering ? 14 : 8,
                         x: 0,
                         y: isHovering ? 6 : 4
@@ -240,11 +494,11 @@ struct StudioActionCardButton: View {
             .animation(.easeOut(duration: 0.2), value: isWorking)
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
+        .disabled(!isEnabled || isWorking)
         .onHover { hovering in
-            isHovering = hovering && isEnabled
+            isHovering = hovering && isEnabled && !isWorking
         }
-        .help(isEnabled ? (enabledHelp ?? title) : disabledHelp)
+        .help(isWorking ? title : (isEnabled ? (enabledHelp ?? title) : disabledHelp))
     }
 
     private var idleContent: some View {
@@ -289,7 +543,7 @@ struct StudioActionCardButton: View {
                     .progressViewStyle(.circular)
                     .controlSize(.small)
                     .tint(.white)
-                Text(workingLabel)
+                Text(title.isEmpty ? workingLabel : title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer(minLength: 0)
@@ -317,5 +571,41 @@ struct StudioActionCardButton: View {
 
     private var clampedProgress: Double {
         max(0, min(1, progress))
+    }
+
+    private var isVisuallyActive: Bool {
+        isEnabled || isWorking
+    }
+}
+struct CopyableMessageBox: View {
+    let text: String
+    var isError: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(isError ? "Error" : "Message", systemImage: isError ? "exclamationmark.triangle.fill" : "info.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isError ? .red : .secondary)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .font(.caption.weight(.medium))
+                .buttonStyle(.plain)
+            }
+
+            TextEditor(text: .constant(text))
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(isError ? .red : .secondary)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 86, maxHeight: 190)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.gray.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke((isError ? Color.red : Color.gray).opacity(0.20), lineWidth: 1))
+        }
     }
 }

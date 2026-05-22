@@ -33,6 +33,8 @@ actor ExportService {
         let shadowColor: CIColor
         /// Source range to export. When the user hasn't trimmed, this is the full clip.
         let trimRange: CMTimeRange
+        let includeSourceAudio: Bool
+        let narrationAudioURL: URL?
     }
 
     func exportWithBackground(
@@ -82,7 +84,8 @@ actor ExportService {
 
         // Audio passthrough
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        if let sourceAudio = audioTracks.first,
+        if snapshot.includeSourceAudio,
+           let sourceAudio = audioTracks.first,
            let compositionAudio = composition.addMutableTrack(
             withMediaType: .audio,
             preferredTrackID: kCMPersistentTrackID_Invalid
@@ -93,6 +96,7 @@ actor ExportService {
                 at: .zero
             )
         }
+        try await insertNarrationAudio(from: snapshot.narrationAudioURL, into: composition, duration: duration)
 
         let renderSize = snapshot.renderSize
         let frameDuration = try await sourceVideoTrack.load(.minFrameDuration)
@@ -210,7 +214,7 @@ actor ExportService {
 
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         var audioOutput: AVAssetReaderTrackOutput?
-        if let audioTrack = audioTracks.first {
+        if snapshot.includeSourceAudio, let audioTrack = audioTracks.first {
             let o = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVLinearPCMBitDepthKey: 16,
@@ -223,6 +227,16 @@ actor ExportService {
                 reader.add(o)
                 audioOutput = o
             }
+        }
+
+        let narrationReader: (reader: AVAssetReader, output: AVAssetReaderTrackOutput, input: AVAssetWriterInput)?
+        if let narrationURL = snapshot.narrationAudioURL {
+            narrationReader = try await makeNarrationReader(
+                for: AVURLAsset(url: narrationURL),
+                duration: duration
+            )
+        } else {
+            narrationReader = nil
         }
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
@@ -256,6 +270,12 @@ actor ExportService {
                 audioInput = a
             }
         }
+        if let narrationReader {
+            guard writer.canAdd(narrationReader.input) else {
+                throw ExportError.cannotAddNarrationAudio
+            }
+            writer.add(narrationReader.input)
+        }
 
         let pixelAdaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
@@ -286,6 +306,15 @@ actor ExportService {
             if let ao = audioOutput, let ai = audioInput {
                 group.addTask { [self] in
                     try await self.pumpAudio(output: ao, input: ai, timeOffset: trimStartTime)
+                }
+            }
+            if let narrationReader {
+                group.addTask { [self] in
+                    try await self.pumpAudio(
+                        output: narrationReader.output,
+                        input: narrationReader.input,
+                        timeOffset: .zero
+                    )
                 }
             }
             try await group.waitForAll()
@@ -376,6 +405,58 @@ actor ExportService {
                 }
             }
         }
+    }
+
+    private nonisolated func insertNarrationAudio(
+        from url: URL?,
+        into composition: AVMutableComposition,
+        duration: CMTime
+    ) async throws {
+        guard let url else { return }
+        let narrationAsset = AVURLAsset(url: url)
+        guard let narrationTrack = try await narrationAsset.loadTracks(withMediaType: .audio).first,
+              let compositionTrack = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+              ) else { return }
+        let narrationDuration = try await narrationAsset.load(.duration)
+        let range = CMTimeRange(start: .zero, duration: CMTimeMinimum(narrationDuration, duration))
+        try compositionTrack.insertTimeRange(range, of: narrationTrack, at: .zero)
+    }
+
+    private nonisolated func makeNarrationReader(
+        for asset: AVURLAsset,
+        duration: CMTime
+    ) async throws -> (reader: AVAssetReader, output: AVAssetReaderTrackOutput, input: AVAssetWriterInput) {
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
+            throw ExportError.noNarrationAudioTrack
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        let assetDuration = try await asset.load(.duration)
+        reader.timeRange = CMTimeRange(start: .zero, duration: CMTimeMinimum(assetDuration, duration))
+
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsFloatKey: false,
+            AVNumberOfChannelsKey: 2,
+            AVSampleRateKey: 44100
+        ])
+        if reader.canAdd(output) { reader.add(output) }
+
+        let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 2,
+            AVSampleRateKey: 44100,
+            AVEncoderBitRateKey: 128_000
+        ])
+        input.expectsMediaDataInRealTime = false
+        guard reader.startReading() else {
+            throw ExportError.readerStartFailed(reader.error)
+        }
+        return (reader, output, input)
     }
 
     /// Returns a sample buffer whose presentation timestamp is shifted by `-offset`.
@@ -534,7 +615,9 @@ actor ExportService {
             bareBezelColor: (Color(hex: project.bareBezelHex) ?? .black).ciColor,
             shadow: project.shadow,
             shadowColor: (Color(hex: project.shadow.colorHex) ?? .black).ciColor,
-            trimRange: trimRange
+            trimRange: trimRange,
+            includeSourceAudio: !project.isMuted,
+            narrationAudioURL: project.narrationAudioURL
         )
     }
 }
@@ -549,6 +632,8 @@ enum ExportError: LocalizedError {
     case writerStartFailed(Error?)
     case writerFinishFailed
     case appendFailed
+    case noNarrationAudioTrack
+    case cannotAddNarrationAudio
 
     var errorDescription: String? {
         switch self {
@@ -561,6 +646,8 @@ enum ExportError: LocalizedError {
         case .writerStartFailed(let e): "Writer failed to start: \(e?.localizedDescription ?? "unknown")"
         case .writerFinishFailed: "Writer failed to finish."
         case .appendFailed: "Failed to append sample buffer."
+        case .noNarrationAudioTrack: "The generated narration file has no audio track."
+        case .cannotAddNarrationAudio: "Could not add narration audio to the export."
         }
     }
 }

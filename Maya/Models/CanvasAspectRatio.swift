@@ -64,6 +64,16 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
+    func renderSize(for quality: CarouselExportQuality) -> CGSize {
+        let full = renderSize
+        let longEdge = max(full.width, full.height)
+        guard longEdge > quality.maxLongEdge else { return full }
+        let scale = quality.maxLongEdge / longEdge
+        let width = max(2, (full.width * scale).rounded(.toNearestOrEven))
+        let height = max(2, (full.height * scale).rounded(.toNearestOrEven))
+        return CGSize(width: width, height: height)
+    }
+
     /// SF Symbol matching the aspect — for the sidebar picker chips.
     var symbol: String {
         switch self {

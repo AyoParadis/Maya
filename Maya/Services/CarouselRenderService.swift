@@ -23,10 +23,11 @@ struct CarouselRenderService {
         _ card: CarouselCard,
         project: CarouselProject,
         time: Double = 0,
-        size: CGSize? = nil
+        size: CGSize? = nil,
+        sourceImage: CGImage? = nil
     ) throws -> CGImage {
         let renderSize = size ?? project.canvasAspect.renderSize
-        let source = card.imageURL.flatMap { NSImage(contentsOf: $0) }?.cgImageForRendering
+        let source = sourceImage ?? card.imageURL.flatMap { NSImage(contentsOf: $0) }?.cgImageForRendering
 
         guard let context = CGContext(
             data: nil,
@@ -256,7 +257,7 @@ struct CarouselRenderService {
     }
 }
 
-private extension NSImage {
+extension NSImage {
     var cgImageForRendering: CGImage? {
         var rect = CGRect(origin: .zero, size: size)
         return cgImage(forProposedRect: &rect, context: nil, hints: nil)

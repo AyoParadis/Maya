@@ -4,6 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct EditorView: View {
+    @Binding var selectedMode: StudioMode
     @AppStorage("hasAcceptedAIDirectorCodexDisclosure") private var hasAcceptedAIDirectorCodexDisclosure = false
     @State private var project = Project()
     @State private var blurPoster: NSImage?
@@ -78,6 +79,11 @@ struct EditorView: View {
         }
         .navigationTitle(AppChrome.title)
         .navigationSubtitle(AppChrome.versionLabel)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                StudioModePicker(selectedMode: $selectedMode)
+            }
+        }
         .sheet(isPresented: $isShowingAIDirectorCodexDisclosure) {
             AIDirectorCodexDisclosureSheet(
                 onContinue: {
@@ -321,6 +327,7 @@ struct EditorView: View {
     }
 
     private func runAIDirector(shouldRetry: Bool) {
+        guard !isRunningAIDirector else { return }
         guard project.videoURL != nil else {
             aiDirectorMessage = .failure("Load a recording before using AI Director.")
             aiDirectorRun.status = .failed
