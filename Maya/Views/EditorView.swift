@@ -188,6 +188,8 @@ struct EditorView: View {
     }
 
     private func importVideo(from url: URL) {
+        let signpost = PerformanceMetrics.begin(.videoImport, detail: url.lastPathComponent)
+        let timer = WallClockTimer()
         let didStart = url.startAccessingSecurityScopedResource()
         do {
             let adopted = try Project.adoptIntoSandbox(url)
@@ -195,10 +197,12 @@ struct EditorView: View {
             Task {
                 project.displayName = adopted.displayName
                 await project.loadVideo(url: adopted.sandboxURL)
+                PerformanceMetrics.end(.videoImport, id: signpost, detail: "\(timer.elapsedMilliseconds)ms")
             }
         } catch {
             if didStart { url.stopAccessingSecurityScopedResource() }
             project.lastExportError = "Could not import video: \(error.localizedDescription)"
+            PerformanceMetrics.end(.videoImport, id: signpost, detail: "failed \(timer.elapsedMilliseconds)ms")
         }
     }
 

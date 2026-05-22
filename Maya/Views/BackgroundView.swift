@@ -84,10 +84,36 @@ private struct BackgroundImageView: View {
             }
         }
         .task(id: url) {
-            _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-            let loaded = NSImage(contentsOf: url)
+            let loaded = await ImageDecodeCache.shared.nsImage(for: url, maxPixelSize: 1920)
             await MainActor.run { self.image = loaded }
         }
+    }
+}
+
+struct CachedImageView<Placeholder: View>: View {
+    let url: URL
+    var maxPixelSize: Int?
+    @ViewBuilder var placeholder: () -> Placeholder
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+            } else {
+                placeholder()
+            }
+        }
+        .task(id: cacheID) {
+            await MainActor.run { self.image = nil }
+            let loaded = await ImageDecodeCache.shared.nsImage(for: url, maxPixelSize: maxPixelSize)
+            await MainActor.run { self.image = loaded }
+        }
+    }
+
+    private var cacheID: String {
+        "\(url.path)#\(maxPixelSize ?? 0)"
     }
 }

@@ -16,6 +16,11 @@ struct SettingsSidebar: View {
 
     @State private var showAdvancedAIDirector = false
     @State private var voicePreviewSound: NSSound?
+    @State private var voicePreviewTask: Task<Void, Never>?
+    @State private var voicePreviewToken: UUID?
+    @State private var voiceStorageSummary: NarrationStorageSummary?
+    @State private var isDeletingVoiceAssets = false
+    @State private var isConfirmingVoiceAssetDeletion = false
     @State private var isVoiceoverExpanded = true
     @State private var isRecordingExpanded = true
     @State private var isAIDirectorExpanded = true
@@ -63,7 +68,30 @@ struct SettingsSidebar: View {
             }
         }
         .task {
-            await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+            await refreshVoiceEngineInstallationStatus()
+            await refreshVoiceStorageSummary()
+            if project.narrationEngineInstallationStatus == .installed {
+                await NarrationService.warmPreviewsIfNeeded(for: project.narrationEngine)
+                await refreshVoiceStorageSummary()
+            }
+        }
+        .onChange(of: project.narrationEngine) { _, _ in
+            Task {
+                await refreshVoiceEngineInstallationStatus()
+                await refreshVoiceStorageSummary()
+            }
+        }
+        .confirmationDialog(
+            "Delete \(project.narrationEngine.displayName) voice assets?",
+            isPresented: $isConfirmingVoiceAssetDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(project.narrationEngine.displayName) assets", role: .destructive) {
+                deleteSelectedVoiceEngineAssets()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the selected engine's installed files, downloaded voice models, and cached previews. Generated project voiceovers are kept.")
         }
     }
 
@@ -312,18 +340,22 @@ struct SettingsSidebar: View {
     private var narrationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             StudioVoiceoverControls(
+                engine: $project.narrationEngine,
                 voice: $project.piperVoice,
                 isPreviewing: project.isPreviewingVoice,
                 isGenerating: project.isGeneratingNarration,
                 isInstalling: project.isInstallingPiper,
                 isCaching: project.isCachingVoicePreviews,
+                isDeletingAssets: isDeletingVoiceAssets,
                 hasNarration: project.narrationAudioURL != nil,
-                shouldShowInstall: shouldShowInstallPiperButton,
+                installationStatus: project.narrationEngineInstallationStatus,
+                storageSummary: voiceStorageSummary,
                 status: narrationStatusMessage,
                 errorMessage: narrationErrorMessage,
                 onPreview: previewVoice,
                 onRemove: removeNarration,
-                onInstall: installPiper
+                onInstall: installSelectedVoiceEngine,
+                onDeleteAssets: { isConfirmingVoiceAssetDeletion = true }
             )
 
             StudioVoiceoverScriptEditor(
@@ -345,9 +377,15 @@ struct SettingsSidebar: View {
 
     private var narrationStatusMessage: (text: String, icon: String, tint: Color)? {
         if project.isInstallingPiper {
-            return ("Setting up local voice engine...", "arrow.down.circle", .secondary)
+            if let message = project.narrationMessage, !isErrorMessage(message) {
+                return (message, "arrow.down.circle", .secondary)
+            }
+            return ("Setting up \(project.narrationEngine.displayName)...", "arrow.down.circle", .secondary)
         }
         if project.isCachingVoicePreviews {
+            if let message = project.narrationMessage, !isErrorMessage(message) {
+                return (message, "bolt.circle", .secondary)
+            }
             return ("Preparing quick previews in the background...", "bolt.circle", .secondary)
         }
         if project.isGeneratingNarration {
@@ -363,14 +401,6 @@ struct SettingsSidebar: View {
             return (message, "info.circle", .secondary)
         }
         return nil
-    }
-
-    private var shouldShowInstallPiperButton: Bool {
-        guard let message = project.narrationMessage else { return false }
-        return message.localizedCaseInsensitiveContains("piper is not installed")
-            || message.localizedCaseInsensitiveContains("no module named piper")
-            || message.localizedCaseInsensitiveContains("externally-managed-environment")
-            || message.localizedCaseInsensitiveContains("externally managed")
     }
 
     private var narrationErrorMessage: String? {
@@ -450,7 +480,7 @@ struct SettingsSidebar: View {
     }
 
     private func removeNarration() {
-        PiperNarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
         project.narrationAudioURL = nil
         project.narrationDisplayName = nil
         project.narrationMessage = nil
@@ -460,18 +490,19 @@ struct SettingsSidebar: View {
         guard !project.isGeneratingNarration,
               !project.isInstallingPiper,
               !project.isCachingVoicePreviews else { return }
-        let request = PiperNarrationService.Request(
+        let request = NarrationRequest(
+            engine: project.narrationEngine,
             text: project.narrationScript,
             voice: project.piperVoice
         )
         project.isGeneratingNarration = true
-        project.narrationMessage = "Generating local Piper narration..."
+        project.narrationMessage = "Generating local \(project.narrationEngine.displayName) narration..."
 
         Task {
             do {
-                let url = try await PiperNarrationService.generate(request)
+                let url = try await NarrationService.generate(request)
                 await MainActor.run {
-                    PiperNarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
+                    NarrationService.cleanupGeneratedNarration(at: project.narrationAudioURL)
                     project.narrationAudioURL = url
                     project.narrationDisplayName = url.lastPathComponent
                     project.narrationMessage = project.videoURL == nil
@@ -479,10 +510,12 @@ struct SettingsSidebar: View {
                         : "Voiceover will be included in export."
                     project.isGeneratingNarration = false
                 }
-                await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+                await NarrationService.warmPreviewsIfNeeded(for: request.engine)
+                await refreshVoiceStorageSummary()
             } catch {
                 await MainActor.run {
                     project.narrationMessage = error.localizedDescription
+                    updateVoiceEngineInstallationStatusFromError(error, engine: request.engine)
                     project.isGeneratingNarration = false
                 }
             }
@@ -490,56 +523,170 @@ struct SettingsSidebar: View {
     }
 
     private func previewVoice() {
-        guard !project.isPreviewingVoice,
-              !project.isGeneratingNarration,
+        guard !project.isGeneratingNarration,
               !project.isInstallingPiper,
               !project.isCachingVoicePreviews else { return }
-        let request = PiperNarrationService.Request(
-            text: PiperVoiceCatalog.previewText,
+        if project.isPreviewingVoice {
+            stopVoicePreview(message: "Preview stopped.")
+            return
+        }
+        voicePreviewTask?.cancel()
+        voicePreviewSound?.stop()
+        voicePreviewSound = nil
+
+        let request = NarrationRequest(
+            engine: project.narrationEngine,
+            text: NarrationService.previewText,
             voice: project.piperVoice
         )
+        let token = UUID()
+        voicePreviewToken = token
         project.isPreviewingVoice = true
         project.narrationMessage = "Generating voice preview..."
 
-        Task {
+        voicePreviewTask = Task {
             do {
-                let preview = try await PiperNarrationService.preview(request)
+                let preview = try await NarrationService.preview(request)
                 await MainActor.run {
-                    voicePreviewSound = NSSound(contentsOf: preview.url, byReference: true)
+                    guard voicePreviewToken == token else { return }
+                    voicePreviewSound?.stop()
+                    let sound = NSSound(contentsOf: preview.url, byReference: true)
+                    voicePreviewSound = sound
                     voicePreviewSound?.play()
                     project.narrationMessage = preview.usedCache ? "Playing cached preview." : "Preview ready."
                     project.isPreviewingVoice = false
                 }
-                await PiperNarrationService.warmEnglishVoicePreviewsIfNeeded()
+                await NarrationService.warmPreviewsIfNeeded(for: request.engine)
+                await refreshVoiceStorageSummary()
+            } catch is CancellationError {
+                await MainActor.run {
+                    guard voicePreviewToken == token else { return }
+                    project.isPreviewingVoice = false
+                }
             } catch {
                 await MainActor.run {
+                    guard voicePreviewToken == token else { return }
                     project.narrationMessage = error.localizedDescription
+                    updateVoiceEngineInstallationStatusFromError(error, engine: request.engine)
                     project.isPreviewingVoice = false
                 }
             }
         }
     }
 
-    private func installPiper() {
+    private func stopVoicePreview(message: String? = nil) {
+        voicePreviewTask?.cancel()
+        voicePreviewTask = nil
+        voicePreviewToken = nil
+        voicePreviewSound?.stop()
+        voicePreviewSound = nil
+        project.isPreviewingVoice = false
+        if let message {
+            project.narrationMessage = message
+        }
+    }
+
+    private func installSelectedVoiceEngine() {
         guard !project.isInstallingPiper,
               !project.isGeneratingNarration,
               !project.isCachingVoicePreviews else { return }
         project.isInstallingPiper = true
-        project.narrationMessage = "Installing local voice engine..."
+        let engine = project.narrationEngine
+        let isRefresh = project.narrationEngineInstallationStatus == .installed
+        project.narrationMessage = "\(isRefresh ? "Refreshing" : "Installing") \(engine.displayName): starting..."
 
         Task {
             do {
-                try await PiperNarrationService.installPiper()
+                try await NarrationService.install(engine) { message in
+                    Task { @MainActor in
+                        project.narrationMessage = message
+                    }
+                }
                 await MainActor.run {
-                    project.narrationMessage = "Voice engine installed. Previews will warm automatically."
                     project.isInstallingPiper = false
+                    project.isCachingVoicePreviews = true
+                    project.narrationMessage = "\(engine.displayName) installed. Preparing fast previews..."
+                }
+                try await NarrationService.cacheVoicePreviews(for: engine) { message in
+                    Task { @MainActor in
+                        project.narrationMessage = message
+                    }
+                }
+                await MainActor.run {
+                    project.narrationMessage = "\(engine.displayName) installed. Fast previews are ready."
+                    project.narrationEngineInstallationStatus = .installed
+                    project.isCachingVoicePreviews = false
+                }
+                await refreshVoiceStorageSummary()
+            } catch {
+                await MainActor.run {
+                    project.narrationMessage = error.localizedDescription
+                    updateVoiceEngineInstallationStatusFromError(error, engine: engine)
+                    project.isInstallingPiper = false
+                    project.isCachingVoicePreviews = false
+                }
+                await refreshVoiceStorageSummary()
+            }
+        }
+    }
+
+    private func refreshVoiceEngineInstallationStatus() async {
+        let engine = project.narrationEngine
+        let status = await NarrationService.installationStatus(for: engine)
+        await MainActor.run {
+            guard project.narrationEngine == engine else { return }
+            project.narrationEngineInstallationStatus = status
+        }
+    }
+
+    private func refreshVoiceStorageSummary() async {
+        let summary = await NarrationService.storageSummary()
+        await MainActor.run {
+            voiceStorageSummary = summary
+        }
+    }
+
+    private func deleteSelectedVoiceEngineAssets() {
+        guard !isDeletingVoiceAssets,
+              !project.isInstallingPiper,
+              !project.isGeneratingNarration,
+              !project.isCachingVoicePreviews else { return }
+        isDeletingVoiceAssets = true
+        let engine = project.narrationEngine
+        project.narrationMessage = "Deleting \(engine.displayName) voice assets..."
+
+        Task {
+            do {
+                try await NarrationService.deleteAssets(for: engine)
+                let summary = await NarrationService.storageSummary()
+                await MainActor.run {
+                    if project.narrationEngine == engine {
+                        project.narrationEngineInstallationStatus = .notInstalled
+                    }
+                    voiceStorageSummary = summary
+                    project.narrationMessage = "\(engine.displayName) voice assets deleted. Generated project voiceovers were kept."
+                    isDeletingVoiceAssets = false
                 }
             } catch {
                 await MainActor.run {
                     project.narrationMessage = error.localizedDescription
-                    project.isInstallingPiper = false
+                    isDeletingVoiceAssets = false
                 }
+                await refreshVoiceStorageSummary()
             }
+        }
+    }
+
+    private func updateVoiceEngineInstallationStatusFromError(_ error: Error, engine: NarrationEngine) {
+        let message = error.localizedDescription
+        if message.localizedCaseInsensitiveContains("not installed")
+            || message.localizedCaseInsensitiveContains("no module named")
+            || message.localizedCaseInsensitiveContains("externally-managed")
+            || message.localizedCaseInsensitiveContains("externally managed") {
+            project.narrationEngineInstallationStatus = .notInstalled
+        }
+        if message.localizedCaseInsensitiveContains("requires Python") || message.localizedCaseInsensitiveContains("incompatible") {
+            project.narrationEngineInstallationStatus = .incompatible
         }
     }
 

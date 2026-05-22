@@ -95,7 +95,7 @@ struct TimelineView: View {
 }
 
 /// Compact transport bar above the tracks. Play/pause, current time, total/trimmed duration,
-/// trim badge with reset, and a mute toggle. Kept slim so the timeline still has room.
+/// trim badge with reset, and volume controls. Kept slim so the timeline still has room.
 private struct TimelineToolbar: View {
     @Bindable var project: Project
 
@@ -124,14 +124,19 @@ private struct TimelineToolbar: View {
             }
             .help("Keyboard shortcuts")
 
-            Button(action: { project.toggleMute() }) {
-                Image(systemName: project.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-            .help(project.isMuted ? "Unmute (m)" : "Mute (m)")
+            TimelineVolumeControl(
+                systemImage: project.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                value: $project.sourceAudioVolume,
+                isEnabled: project.videoURL != nil,
+                help: "Source audio volume"
+            )
+
+            TimelineVolumeControl(
+                systemImage: "waveform",
+                value: $project.narrationAudioVolume,
+                isEnabled: project.narrationAudioURL != nil,
+                help: "Voiceover volume"
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -197,5 +202,29 @@ private struct TimelineToolbar: View {
         .background(
             Capsule().fill(Color(red: 1.0, green: 0.82, blue: 0.10))
         )
+    }
+}
+
+private struct TimelineVolumeControl: View {
+    let systemImage: String
+    @Binding var value: Double
+    let isEnabled: Bool
+    let help: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(isEnabled ? 0.82 : 0.35))
+                .frame(width: 18, height: 18)
+
+            Slider(value: $value, in: 0...1)
+                .controlSize(.mini)
+                .frame(width: 72)
+        }
+        .frame(width: 96, alignment: .leading)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.45)
+        .help(help)
     }
 }

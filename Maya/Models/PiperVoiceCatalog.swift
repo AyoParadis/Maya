@@ -12,7 +12,7 @@ struct PiperVoice: Identifiable, Hashable {
 }
 
 enum PiperVoiceCatalog {
-    nonisolated static let previewText = "This is a Maya AI Studio voice preview. Listen for clarity, warmth, pacing, breath, and whether the voice still feels natural after a few full sentences."
+    nonisolated static let previewText = NarrationService.previewText
 
     nonisolated static var englishVoiceIDs: [String] {
         voices
@@ -101,4 +101,26 @@ enum PiperVoiceCatalog {
         PiperVoice(id: "vi_VN-vais1000-medium", name: "VAIS1000", language: "Vietnamese", quality: "medium"),
         PiperVoice(id: "ar_JO-kareem-medium", name: "Kareem", language: "Arabic Jordan", quality: "medium")
     ]
+}
+
+enum NarrationVoiceCatalog {
+    nonisolated static func voices(for engine: NarrationEngine) -> [PiperVoice] {
+        switch engine {
+        case .piper:
+            PiperVoiceCatalog.voices
+        case .kokoro:
+            [
+                PiperVoice(id: "af_heart", name: "Heart", language: "English US", quality: "premium"),
+                PiperVoice(id: "af_bella", name: "Bella", language: "English US", quality: "premium"),
+                PiperVoice(id: "af_nicole", name: "Nicole", language: "English US", quality: "premium"),
+                PiperVoice(id: "af_sarah", name: "Sarah", language: "English US", quality: "premium"),
+                PiperVoice(id: "am_adam", name: "Adam", language: "English US", quality: "premium"),
+                PiperVoice(id: "am_michael", name: "Michael", language: "English US", quality: "premium"),
+                PiperVoice(id: "bf_emma", name: "Emma", language: "English UK", quality: "premium"),
+                PiperVoice(id: "bf_isabella", name: "Isabella", language: "English UK", quality: "premium"),
+                PiperVoice(id: "bm_george", name: "George", language: "English UK", quality: "premium"),
+                PiperVoice(id: "bm_lewis", name: "Lewis", language: "English UK", quality: "premium")
+            ]
+        }
+    }
 }

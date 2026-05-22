@@ -174,32 +174,40 @@ private struct CarouselVoiceoverTrack: View {
             .buttonStyle(.plain)
 
             TimelineBlockMenu {
-                Button {
-                    select(card)
-                } label: {
-                    Label("Select slide", systemImage: "cursorarrow.click")
-                }
-                Button {
-                    select(card)
-                } label: {
-                    Label("Reveal slide", systemImage: "scope")
-                }
-                Divider()
-                Button(role: .destructive) {
-                    project.removeVoiceover(for: card.id)
-                } label: {
-                    Label("Remove voiceover", systemImage: "waveform.slash")
-                }
+                voiceoverMenuContent(for: card)
             }
             .padding(.trailing, 5)
         }
         .offset(x: x, y: 4)
+        .contextMenu {
+            voiceoverMenuContent(for: card)
+        }
         .help(card.narrationScript.isEmpty ? card.displayName : card.narrationScript)
     }
 
     private func select(_ card: CarouselCard) {
         project.select(card)
         currentTime = project.startTime(for: card.id)
+    }
+
+    @ViewBuilder
+    private func voiceoverMenuContent(for card: CarouselCard) -> some View {
+        Button {
+            select(card)
+        } label: {
+            Label("Select slide", systemImage: "cursorarrow.click")
+        }
+        Button {
+            select(card)
+        } label: {
+            Label("Reveal slide", systemImage: "scope")
+        }
+        Divider()
+        Button(role: .destructive) {
+            project.removeVoiceover(for: card.id)
+        } label: {
+            Label("Remove voiceover", systemImage: "waveform.slash")
+        }
     }
 }
 
@@ -256,37 +264,45 @@ private struct CarouselMotionTrack: View {
             .buttonStyle(.plain)
 
             TimelineBlockMenu {
-                Button {
-                    select(card)
-                } label: {
-                    Label("Select slide", systemImage: "cursorarrow.click")
-                }
-                Divider()
-                ForEach(CarouselMotionPreset.allCases) { preset in
-                    Button {
-                        card.motionOverride = preset
-                        project.validate()
-                    } label: {
-                        Label(preset.label, systemImage: preset.symbol)
-                    }
-                }
-                Divider()
-                Button {
-                    card.motionOverride = nil
-                    project.validate()
-                } label: {
-                    Label("Reset to project default", systemImage: "arrow.counterclockwise")
-                }
+                motionMenuContent(for: card)
             }
             .padding(.trailing, 5)
             .padding(.top, 7)
         }
         .offset(x: x, y: 6)
+        .contextMenu {
+            motionMenuContent(for: card)
+        }
     }
 
     private func select(_ card: CarouselCard) {
         project.select(card)
         currentTime = project.startTime(for: card.id)
+    }
+
+    @ViewBuilder
+    private func motionMenuContent(for card: CarouselCard) -> some View {
+        Button {
+            select(card)
+        } label: {
+            Label("Select slide", systemImage: "cursorarrow.click")
+        }
+        Divider()
+        ForEach(CarouselMotionPreset.allCases) { preset in
+            Button {
+                card.motionOverride = preset
+                project.validate()
+            } label: {
+                Label(preset.label, systemImage: preset.symbol)
+            }
+        }
+        Divider()
+        Button {
+            card.motionOverride = nil
+            project.validate()
+        } label: {
+            Label("Reset to project default", systemImage: "arrow.counterclockwise")
+        }
     }
 }
 
@@ -327,9 +343,10 @@ private struct CarouselCardsTrack: View {
 
         return ZStack(alignment: .trailing) {
             ZStack(alignment: .leading) {
-                if let imageURL = card.imageURL, let image = NSImage(contentsOf: imageURL) {
-                    Image(nsImage: image)
-                        .resizable()
+                if let imageURL = card.imageURL {
+                    CachedImageView(url: imageURL, maxPixelSize: 420) {
+                        Color.black.opacity(0.32)
+                    }
                         .scaledToFill()
                         .frame(width: blockWidth, height: height)
                         .opacity(0.62)
@@ -381,59 +398,16 @@ private struct CarouselCardsTrack: View {
             durationHandle(card: card, timelineWidth: width, timelineDuration: duration)
 
             TimelineBlockMenu {
-                Button {
-                    select(card)
-                } label: {
-                    Label("Select slide", systemImage: "cursorarrow.click")
-                }
-                Divider()
-                Button {
-                    project.moveCardEarlier(id: card.id)
-                    currentTime = project.startTime(for: card.id)
-                } label: {
-                    Label("Move earlier", systemImage: "arrow.left")
-                }
-                .disabled(index == 0)
-
-                Button {
-                    project.moveCardLater(id: card.id)
-                    currentTime = project.startTime(for: card.id)
-                } label: {
-                    Label("Move later", systemImage: "arrow.right")
-                }
-                .disabled(index >= project.cards.count - 1)
-                Divider()
-                Button {
-                    project.duplicateCard(id: card.id)
-                    if let id = project.selectedCardID {
-                        currentTime = project.startTime(for: id)
-                    }
-                } label: {
-                    Label("Duplicate slide", systemImage: "square.on.square")
-                }
-                if card.narrationAudioURL != nil {
-                    Button(role: .destructive) {
-                        project.removeVoiceover(for: card.id)
-                    } label: {
-                        Label("Remove voiceover", systemImage: "waveform.slash")
-                    }
-                }
-                Button(role: .destructive) {
-                    project.removeCard(id: card.id)
-                    if let id = project.selectedCardID {
-                        currentTime = project.startTime(for: id)
-                    } else {
-                        currentTime = 0
-                    }
-                } label: {
-                    Label("Delete slide", systemImage: "trash")
-                }
+                cardMenuContent(for: card, index: index)
             }
             .padding(.trailing, 12)
         }
         .contentShape(Rectangle())
         .onTapGesture {
             select(card)
+        }
+        .contextMenu {
+            cardMenuContent(for: card, index: index)
         }
         .onDrag {
             draggingCardID = card.id
@@ -471,6 +445,57 @@ private struct CarouselCardsTrack: View {
     private func select(_ card: CarouselCard) {
         project.select(card)
         currentTime = project.startTime(for: card.id)
+    }
+
+    @ViewBuilder
+    private func cardMenuContent(for card: CarouselCard, index: Int) -> some View {
+        Button {
+            select(card)
+        } label: {
+            Label("Select slide", systemImage: "cursorarrow.click")
+        }
+        Divider()
+        Button {
+            project.moveCardEarlier(id: card.id)
+            currentTime = project.startTime(for: card.id)
+        } label: {
+            Label("Move earlier", systemImage: "arrow.left")
+        }
+        .disabled(index == 0)
+
+        Button {
+            project.moveCardLater(id: card.id)
+            currentTime = project.startTime(for: card.id)
+        } label: {
+            Label("Move later", systemImage: "arrow.right")
+        }
+        .disabled(index >= project.cards.count - 1)
+        Divider()
+        Button {
+            project.duplicateCard(id: card.id)
+            if let id = project.selectedCardID {
+                currentTime = project.startTime(for: id)
+            }
+        } label: {
+            Label("Duplicate slide", systemImage: "square.on.square")
+        }
+        if card.narrationAudioURL != nil {
+            Button(role: .destructive) {
+                project.removeVoiceover(for: card.id)
+            } label: {
+                Label("Remove voiceover", systemImage: "waveform.slash")
+            }
+        }
+        Button(role: .destructive) {
+            project.removeCard(id: card.id)
+            if let id = project.selectedCardID {
+                currentTime = project.startTime(for: id)
+            } else {
+                currentTime = 0
+            }
+        } label: {
+            Label("Delete slide", systemImage: "trash")
+        }
     }
 
     private func durationHandle(card: CarouselCard, timelineWidth: CGFloat, timelineDuration: Double) -> some View {
@@ -524,7 +549,7 @@ private struct TimelineBlockMenu<Content: View>: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Timeline actions")
+        .help("Timeline actions. Control-click or two-finger click a timeline block to open the same menu.")
     }
 }
 

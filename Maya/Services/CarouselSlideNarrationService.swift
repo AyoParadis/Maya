@@ -29,13 +29,18 @@ enum CarouselSlideNarrationService {
         let audioDuration: Double
     }
 
-    nonisolated static func generate(from source: Source, voice: String, editedScript: String? = nil) async throws -> Result? {
+    nonisolated static func generate(
+        from source: Source,
+        engine: NarrationEngine,
+        voice: String,
+        editedScript: String? = nil
+    ) async throws -> Result? {
         let detectedText = try await detectedText(for: source)
         let script = cleanedSpokenScript(from: editedScript ?? detectedText)
         guard !script.isEmpty else { return nil }
 
-        let audioURL = try await PiperNarrationService.generate(
-            PiperNarrationService.Request(text: script, voice: voice)
+        let audioURL = try await NarrationService.generate(
+            NarrationRequest(engine: engine, text: script, voice: voice)
         )
         let duration = try await audioDuration(for: audioURL)
         return Result(
@@ -46,11 +51,15 @@ enum CarouselSlideNarrationService {
         )
     }
 
-    nonisolated static func generateAudio(script: String, voice: String) async throws -> (url: URL, duration: Double)? {
+    nonisolated static func generateAudio(
+        script: String,
+        engine: NarrationEngine,
+        voice: String
+    ) async throws -> (url: URL, duration: Double)? {
         let script = cleanedSpokenScript(from: script)
         guard !script.isEmpty else { return nil }
-        let audioURL = try await PiperNarrationService.generate(
-            PiperNarrationService.Request(text: script, voice: voice)
+        let audioURL = try await NarrationService.generate(
+            NarrationRequest(engine: engine, text: script, voice: voice)
         )
         let duration = try await audioDuration(for: audioURL)
         return (audioURL, duration)
@@ -93,46 +102,47 @@ enum CarouselSlideNarrationService {
     }
 
     nonisolated private static func recognizeText(in url: URL, useCache: Bool) async throws -> String {
-        let key = ocrCacheKey(for: url)
-        if useCache, let cached = await CarouselOCRCache.shared.value(for: key) {
-            return cached
-        }
+        try await PerformanceMetrics.measure(.carouselOCR, detail: url.lastPathComponent) {
+            let key = ocrCacheKey(for: url)
+            if useCache, let cached = await CarouselOCRCache.shared.value(for: key) {
+                return cached
+            }
 
-        guard let image = NSImage(contentsOf: url),
-              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return ""
-        }
+            guard let cgImage = await ImageDecodeCache.shared.cgImage(for: url, maxPixelSize: 2400) else {
+                return ""
+            }
 
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["en-US"]
-        request.minimumTextHeight = 0.012
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["en-US"]
+            request.minimumTextHeight = 0.012
 
-        let handler = VNImageRequestHandler(cgImage: preprocessedImage(from: cgImage), options: [:])
-        try handler.perform([request])
+            let handler = VNImageRequestHandler(cgImage: preprocessedImage(from: cgImage), options: [:])
+            try handler.perform([request])
 
-        let observations = (request.results ?? [])
-            .sorted {
-                if abs($0.boundingBox.midY - $1.boundingBox.midY) > 0.03 {
-                    return $0.boundingBox.midY > $1.boundingBox.midY
+            let observations = (request.results ?? [])
+                .sorted {
+                    if abs($0.boundingBox.midY - $1.boundingBox.midY) > 0.03 {
+                        return $0.boundingBox.midY > $1.boundingBox.midY
+                    }
+                    return $0.boundingBox.minX < $1.boundingBox.minX
                 }
-                return $0.boundingBox.minX < $1.boundingBox.minX
+
+            let lines = observations.compactMap { observation in
+                observation.topCandidates(1).first?.string
             }
 
-        let lines = observations.compactMap { observation in
-            observation.topCandidates(1).first?.string
+            let result = lines
+                .map(cleanLine)
+                .filter { !$0.isEmpty }
+                .reduce(into: [String]()) { partial, line in
+                    appendOCRLine(line, to: &partial)
+                }
+                .joined(separator: "\n")
+            await CarouselOCRCache.shared.set(result, for: key)
+            return result
         }
-
-        let result = lines
-            .map(cleanLine)
-            .filter { !$0.isEmpty }
-            .reduce(into: [String]()) { partial, line in
-                appendOCRLine(line, to: &partial)
-            }
-            .joined(separator: "\n")
-        await CarouselOCRCache.shared.set(result, for: key)
-        return result
     }
 
     nonisolated private static func preprocessedImage(from cgImage: CGImage) -> CGImage {

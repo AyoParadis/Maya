@@ -48,6 +48,7 @@ final class DeviceFrameCompositionInstruction: AVMutableVideoCompositionInstruct
 }
 
 final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
+    private let renderColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
     private let ciContext: CIContext = {
         if let device = MTLCreateSystemDefaultDevice() {
             return CIContext(mtlDevice: device, options: [
@@ -60,6 +61,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
 
     private let renderQueue = DispatchQueue(label: "maya.compositor.render", qos: .userInitiated)
     private var renderContext: AVVideoCompositionRenderContext?
+    private var maskCache: (rect: CGRect, radius: CGFloat, image: CIImage)?
 
     var sourcePixelBufferAttributes: [String: any Sendable]? = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -172,7 +174,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
             background = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
                 .cropped(to: renderRect)
         } else if let bg = instruction.backgroundImage {
-            background = scaleToFill(bg, target: renderRect)
+            background = bg.extent.equalTo(renderRect) ? bg : scaleToFill(bg, target: renderRect)
         } else {
             background = CIImage(color: .black).cropped(to: renderRect)
         }
@@ -238,11 +240,19 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
         video = video.cropped(to: screenRect)
 
         // 3. Rounded mask
-        let rounded = CIFilter.roundedRectangleGenerator()
-        rounded.extent = screenRect
-        rounded.radius = Float(cornerRadius)
-        rounded.color = CIColor.white
-        let mask = rounded.outputImage?.cropped(to: screenRect) ?? CIImage(color: .white).cropped(to: screenRect)
+        let mask: CIImage
+        if let cached = maskCache,
+           cached.rect.equalTo(screenRect),
+           abs(cached.radius - cornerRadius) < 0.001 {
+            mask = cached.image
+        } else {
+            let rounded = CIFilter.roundedRectangleGenerator()
+            rounded.extent = screenRect
+            rounded.radius = Float(cornerRadius)
+            rounded.color = CIColor.white
+            mask = rounded.outputImage?.cropped(to: screenRect) ?? CIImage(color: .white).cropped(to: screenRect)
+            maskCache = (screenRect, cornerRadius, mask)
+        }
 
         let masked = CIFilter.blendWithMask()
         masked.inputImage = video
@@ -316,7 +326,7 @@ final class DeviceFrameCompositor: NSObject, AVVideoCompositing {
         ciContext.render(image.cropped(to: renderRect),
                          to: output,
                          bounds: renderRect,
-                         colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+                         colorSpace: renderColorSpace)
         request.finish(withComposedVideoFrame: output)
     }
 

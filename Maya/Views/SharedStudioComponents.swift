@@ -127,16 +127,28 @@ struct CompactStatusMessage: View {
 }
 
 struct PiperVoiceSelector: View {
+    @Binding var engine: NarrationEngine
     @Binding var voice: String
 
-    private let customVoiceTag = "__maya_custom_piper_voice__"
+    private let customVoiceTag = "__maya_custom_voice__"
 
     private var catalogVoiceIDs: Set<String> {
-        Set(PiperVoiceCatalog.voices.map(\.id))
+        Set(NarrationVoiceCatalog.voices(for: engine).map(\.id))
     }
 
     private var isCustomVoice: Bool {
         !voice.isEmpty && !catalogVoiceIDs.contains(voice)
+    }
+
+    private var engineSelection: Binding<NarrationEngine> {
+        Binding {
+            engine
+        } set: { newValue in
+            engine = newValue
+            if !Set(NarrationVoiceCatalog.voices(for: newValue).map(\.id)).contains(voice) {
+                voice = newValue.defaultVoice
+            }
+        }
     }
 
     private var pickerSelection: Binding<String> {
@@ -155,62 +167,91 @@ struct PiperVoiceSelector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("AI voice")
+            Text("AI voice engine")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Picker("AI voice engine", selection: engineSelection) {
+                ForEach(NarrationEngine.allCases) { engine in
+                    Text("\(engine.displayName) - \(engine.shortDescription)").tag(engine)
+                }
+            }
+            .labelsHidden()
+
+            Text("Voice")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
 
             Picker("AI voice", selection: pickerSelection) {
-                ForEach(PiperVoiceCatalog.voices) { voice in
+                ForEach(NarrationVoiceCatalog.voices(for: engine)) { voice in
                     Text(voice.displayName).tag(voice.id)
                 }
                 Divider()
-                Text("Custom voice ID...").tag(customVoiceTag)
+                Text(customVoiceLabel).tag(customVoiceTag)
             }
             .labelsHidden()
 
             if isCustomVoice || voice.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Piper voice ID")
+                    Text(customVoiceFieldTitle)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    TextField(PiperNarrationService.defaultVoice, text: $voice)
+                    TextField(engine.defaultVoice, text: $voice)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.caption, design: .monospaced))
-                        .help("Type any Piper voice ID, including voices not listed above")
+                        .help(customVoiceHelp)
                 }
             }
+
         }
+    }
+
+    private var customVoiceLabel: String {
+        "Custom voice ID..."
+    }
+
+    private var customVoiceFieldTitle: String {
+        "\(engine.displayName) voice ID"
+    }
+
+    private var customVoiceHelp: String {
+        return "Type any \(engine.displayName) voice ID, including voices not listed above"
     }
 }
 
 struct StudioVoiceoverControls: View {
+    @Binding var engine: NarrationEngine
     @Binding var voice: String
     let isPreviewing: Bool
     let isGenerating: Bool
     let isInstalling: Bool
     let isCaching: Bool
+    let isDeletingAssets: Bool
     let hasNarration: Bool
-    let shouldShowInstall: Bool
+    let installationStatus: NarrationEngineInstallationStatus
+    let storageSummary: NarrationStorageSummary?
     let status: (text: String, icon: String, tint: Color)?
     let errorMessage: String?
     let onPreview: () -> Void
     let onRemove: () -> Void
     let onInstall: () -> Void
+    let onDeleteAssets: () -> Void
 
     private var isBusy: Bool {
-        isPreviewing || isGenerating || isInstalling || isCaching
+        isGenerating || isInstalling || isCaching || isDeletingAssets
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PiperVoiceSelector(voice: $voice)
+            PiperVoiceSelector(engine: $engine, voice: $voice)
 
             HStack(spacing: 8) {
                 Button(action: onPreview) {
                     Label(isPreviewing ? "Previewing..." : "Preview", systemImage: "play.circle")
                         .frame(maxWidth: .infinity)
                 }
-                .disabled(isBusy)
+                .disabled(isBusy || (!isPreviewing && installationStatus != .installed))
+                .help(previewButtonHelp)
 
                 Button(action: onRemove) {
                     Image(systemName: "trash")
@@ -220,13 +261,18 @@ struct StudioVoiceoverControls: View {
                 .help("Remove voiceover")
             }
 
-            if shouldShowInstall {
-                Button(action: onInstall) {
-                    Label(isInstalling ? "Installing voice engine..." : "Install voice engine", systemImage: "arrow.down.circle")
-                        .frame(maxWidth: .infinity)
-                }
-                .disabled(isInstalling || isCaching || isGenerating)
-                .help("Create Maya's local Piper environment and install piper-tts")
+            Button(action: onInstall) {
+                Label(setupButtonTitle, systemImage: setupButtonIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .disabled(isInstalling || isCaching || isGenerating)
+            .help(setupButtonHelp)
+            .controlSize(installationStatus == .installed ? .small : .regular)
+
+            voiceStorageSection
+
+            if !isInstalling && !isCaching, let setupStatus {
+                CompactStatusMessage(text: setupStatus.text, icon: setupStatus.icon, tint: setupStatus.tint)
             }
 
             if isBusy {
@@ -241,6 +287,122 @@ struct StudioVoiceoverControls: View {
             if let errorMessage {
                 CopyableMessageBox(text: errorMessage, isError: true)
             }
+        }
+    }
+
+    private var voiceStorageSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "internaldrive")
+                    .foregroundStyle(.secondary)
+                Text(storageDescription)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                if storageSummary == nil {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+            }
+
+            Button(role: .destructive, action: onDeleteAssets) {
+                Label(deleteButtonTitle, systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .controlSize(.small)
+            .disabled(isBusy || !selectedEngineStorage.hasDeletableAssets)
+            .help(deleteButtonHelp)
+        }
+    }
+
+    private var setupButtonTitle: String {
+        if isInstalling {
+            return installationStatus == .installed ? "Refreshing \(engine.displayName)..." : "Installing \(engine.displayName)..."
+        }
+        if isCaching {
+            return "Preparing previews..."
+        }
+        switch installationStatus {
+        case .notInstalled:
+            return "Install selected engine"
+        case .installed:
+            return "Refresh voices"
+        case .incompatible:
+            return "Repair install"
+        }
+    }
+
+    private var previewButtonHelp: String {
+        if installationStatus == .installed {
+            return isPreviewing ? "Stop the current voice preview" : "Play a fast preview for the selected voice"
+        }
+        if installationStatus == .incompatible {
+            return "Repair \(engine.displayName) before previewing voices"
+        }
+        return "Install \(engine.displayName) before previewing voices"
+    }
+
+    private var setupButtonIcon: String {
+        switch installationStatus {
+        case .notInstalled:
+            return "arrow.down.circle"
+        case .installed:
+            return "arrow.clockwise.circle"
+        case .incompatible:
+            return "wrench.and.screwdriver"
+        }
+    }
+
+    private var setupButtonHelp: String {
+        switch installationStatus {
+        case .notInstalled:
+            return engine.installHelp
+        case .installed:
+            return "Refresh \(engine.displayName), update local voice packages, and rebuild fast previews"
+        case .incompatible:
+            return "Repair \(engine.displayName)'s local environment and rebuild fast previews"
+        }
+    }
+
+    private var selectedEngineStorage: NarrationEngineStorage {
+        storageSummary?.storage(for: engine) ?? NarrationEngineStorage(
+            engine: engine,
+            byteCount: 0,
+            installationStatus: installationStatus
+        )
+    }
+
+    private var storageDescription: String {
+        guard let storageSummary else {
+            return "Measuring voice storage..."
+        }
+        return "\(engine.displayName) \(selectedEngineStorage.formattedSize) · total \(storageSummary.formattedTotalSize)"
+    }
+
+    private var deleteButtonTitle: String {
+        if isDeletingAssets {
+            return "Deleting \(engine.displayName)..."
+        }
+        return "Delete \(engine.displayName) assets"
+    }
+
+    private var deleteButtonHelp: String {
+        if selectedEngineStorage.hasDeletableAssets {
+            return "Remove \(engine.displayName)'s installed engine files, downloaded voice models, and cached previews"
+        }
+        return "No local \(engine.displayName) voice assets to delete"
+    }
+
+    private var setupStatus: (text: String, icon: String, tint: Color)? {
+        switch installationStatus {
+        case .notInstalled:
+            return nil
+        case .installed:
+            return ("\(engine.displayName) installed", "checkmark.circle.fill", .green)
+        case .incompatible:
+            return ("\(engine.displayName) install needs repair", "exclamationmark.triangle", .orange)
         }
     }
 }

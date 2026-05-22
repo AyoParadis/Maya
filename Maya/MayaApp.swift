@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct MayaApp: App {
+    init() {
+        PerformanceBenchmark.runIfRequested()
+        PerformanceMetrics.event(.appLaunch, detail: "MayaApp initialized")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

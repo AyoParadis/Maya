@@ -33,8 +33,9 @@ actor ExportService {
         let shadowColor: CIColor
         /// Source range to export. When the user hasn't trimmed, this is the full clip.
         let trimRange: CMTimeRange
-        let includeSourceAudio: Bool
+        let sourceAudioVolume: Double
         let narrationAudioURL: URL?
+        let narrationAudioVolume: Double
     }
 
     func exportWithBackground(
@@ -58,23 +59,24 @@ actor ExportService {
     // MARK: - With background pipeline
 
     private func runWithBackground(snapshot: Snapshot, outputURL: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
-        // Source lives inside our sandbox already — no scope needed there. The save-panel
-        // URL still requires scope for the writer to create the destination file.
-        let outputAccess = outputURL.startAccessingSecurityScopedResource()
-        defer { if outputAccess { outputURL.stopAccessingSecurityScopedResource() } }
+        try await PerformanceMetrics.measure(.editorExportBackground, detail: "\(Int(snapshot.renderSize.width))x\(Int(snapshot.renderSize.height))") {
+            // Source lives inside our sandbox already — no scope needed there. The save-panel
+            // URL still requires scope for the writer to create the destination file.
+            let outputAccess = outputURL.startAccessingSecurityScopedResource()
+            defer { if outputAccess { outputURL.stopAccessingSecurityScopedResource() } }
 
-        let asset = AVURLAsset(url: snapshot.sourceVideoURL)
-        let videoTracks = try await asset.loadTracks(withMediaType: .video)
-        guard let sourceVideoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
-        let trimRange = snapshot.trimRange
-        let duration = trimRange.duration
-        let trimStartSeconds = trimRange.start.seconds
+            let asset = AVURLAsset(url: snapshot.sourceVideoURL)
+            let videoTracks = try await asset.loadTracks(withMediaType: .video)
+            guard let sourceVideoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
+            let trimRange = snapshot.trimRange
+            let duration = trimRange.duration
+            let trimStartSeconds = trimRange.start.seconds
 
-        let composition = AVMutableComposition()
-        guard let compositionVideoTrack = composition.addMutableTrack(
-            withMediaType: .video,
-            preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else { throw ExportError.cannotBuildComposition }
+            let composition = AVMutableComposition()
+            guard let compositionVideoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else { throw ExportError.cannotBuildComposition }
 
         try compositionVideoTrack.insertTimeRange(
             trimRange,
@@ -82,9 +84,10 @@ actor ExportService {
             at: .zero
         )
 
-        // Audio passthrough
+        var audioMixParameters: [AVMutableAudioMixInputParameters] = []
+
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        if snapshot.includeSourceAudio,
+        if Self.isAudible(snapshot.sourceAudioVolume),
            let sourceAudio = audioTracks.first,
            let compositionAudio = composition.addMutableTrack(
             withMediaType: .audio,
@@ -95,8 +98,16 @@ actor ExportService {
                 of: sourceAudio,
                 at: .zero
             )
+            audioMixParameters.append(Self.audioMixParameters(for: compositionAudio, volume: snapshot.sourceAudioVolume))
         }
-        try await insertNarrationAudio(from: snapshot.narrationAudioURL, into: composition, duration: duration)
+        if let narrationTrack = try await insertNarrationAudio(
+            from: snapshot.narrationAudioURL,
+            into: composition,
+            duration: duration,
+            volume: snapshot.narrationAudioVolume
+        ) {
+            audioMixParameters.append(Self.audioMixParameters(for: narrationTrack, volume: snapshot.narrationAudioVolume))
+        }
 
         let renderSize = snapshot.renderSize
         let frameDuration = try await sourceVideoTrack.load(.minFrameDuration)
@@ -133,6 +144,11 @@ actor ExportService {
             throw ExportError.cannotInitExportSession
         }
         session.videoComposition = videoComposition
+        if !audioMixParameters.isEmpty {
+            let audioMix = AVMutableAudioMix()
+            audioMix.inputParameters = audioMixParameters
+            session.audioMix = audioMix
+        }
         session.shouldOptimizeForNetworkUse = true
 
         if FileManager.default.fileExists(atPath: outputURL.path) {
@@ -147,17 +163,19 @@ actor ExportService {
         }
         defer { progressTask.cancel() }
 
-        try await session.export(to: outputURL, as: .mp4)
-        progress(1.0)
+            try await session.export(to: outputURL, as: .mp4)
+            progress(1.0)
+        }
     }
 
     // MARK: - Transparent pipeline
 
     private func runTransparent(snapshot: Snapshot, outputURL: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
-        let outputAccess = outputURL.startAccessingSecurityScopedResource()
-        defer { if outputAccess { outputURL.stopAccessingSecurityScopedResource() } }
+        try await PerformanceMetrics.measure(.editorExportTransparent, detail: "\(Int(snapshot.renderSize.width))x\(Int(snapshot.renderSize.height))") {
+            let outputAccess = outputURL.startAccessingSecurityScopedResource()
+            defer { if outputAccess { outputURL.stopAccessingSecurityScopedResource() } }
 
-        let asset = AVURLAsset(url: snapshot.sourceVideoURL)
+            let asset = AVURLAsset(url: snapshot.sourceVideoURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let sourceVideoTrack = videoTracks.first else { throw ExportError.noVideoTrack }
         let trimRange = snapshot.trimRange
@@ -212,32 +230,11 @@ actor ExportService {
         videoOutput.videoComposition = videoComposition
         if reader.canAdd(videoOutput) { reader.add(videoOutput) }
 
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        var audioOutput: AVAssetReaderTrackOutput?
-        if snapshot.includeSourceAudio, let audioTrack = audioTracks.first {
-            let o = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsFloatKey: false,
-                AVNumberOfChannelsKey: 2,
-                AVSampleRateKey: 44100
-            ])
-            if reader.canAdd(o) {
-                reader.add(o)
-                audioOutput = o
-            }
-        }
-
-        let narrationReader: (reader: AVAssetReader, output: AVAssetReaderTrackOutput, input: AVAssetWriterInput)?
-        if let narrationURL = snapshot.narrationAudioURL {
-            narrationReader = try await makeNarrationReader(
-                for: AVURLAsset(url: narrationURL),
-                duration: duration
-            )
-        } else {
-            narrationReader = nil
-        }
+        let mixedAudioReader = try await makeMixedAudioReader(
+            sourceAsset: asset,
+            snapshot: snapshot,
+            duration: duration
+        )
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
@@ -256,7 +253,7 @@ actor ExportService {
         if writer.canAdd(videoInput) { writer.add(videoInput) }
 
         var audioInput: AVAssetWriterInput?
-        if audioOutput != nil {
+        if mixedAudioReader != nil {
             let settings: [String: Any] = [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVNumberOfChannelsKey: 2,
@@ -270,12 +267,6 @@ actor ExportService {
                 audioInput = a
             }
         }
-        if let narrationReader {
-            guard writer.canAdd(narrationReader.input) else {
-                throw ExportError.cannotAddNarrationAudio
-            }
-            writer.add(narrationReader.input)
-        }
 
         let pixelAdaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
@@ -287,6 +278,11 @@ actor ExportService {
         )
 
         guard reader.startReading() else { throw ExportError.readerStartFailed(reader.error) }
+        if let mixedAudioReader {
+            guard mixedAudioReader.reader.startReading() else {
+                throw ExportError.readerStartFailed(mixedAudioReader.reader.error)
+            }
+        }
         guard writer.startWriting() else { throw ExportError.writerStartFailed(writer.error) }
         writer.startSession(atSourceTime: .zero)
 
@@ -303,16 +299,11 @@ actor ExportService {
                     progress: progress
                 )
             }
-            if let ao = audioOutput, let ai = audioInput {
-                group.addTask { [self] in
-                    try await self.pumpAudio(output: ao, input: ai, timeOffset: trimStartTime)
-                }
-            }
-            if let narrationReader {
+            if let mixedAudioReader, let ai = audioInput {
                 group.addTask { [self] in
                     try await self.pumpAudio(
-                        output: narrationReader.output,
-                        input: narrationReader.input,
+                        output: mixedAudioReader.output,
+                        input: ai,
                         timeOffset: .zero
                     )
                 }
@@ -325,6 +316,7 @@ actor ExportService {
         }
         if writer.status == .failed { throw writer.error ?? ExportError.writerFinishFailed }
         progress(1.0)
+        }
     }
 
     private nonisolated func pumpVideo(
@@ -371,7 +363,7 @@ actor ExportService {
     }
 
     private nonisolated func pumpAudio(
-        output: AVAssetReaderTrackOutput,
+        output: AVAssetReaderOutput,
         input: AVAssetWriterInput,
         timeOffset: CMTime
     ) async throws {
@@ -410,33 +402,54 @@ actor ExportService {
     private nonisolated func insertNarrationAudio(
         from url: URL?,
         into composition: AVMutableComposition,
-        duration: CMTime
-    ) async throws {
-        guard let url else { return }
+        duration: CMTime,
+        volume: Double
+    ) async throws -> AVCompositionTrack? {
+        guard let url, Self.isAudible(volume) else { return nil }
         let narrationAsset = AVURLAsset(url: url)
         guard let narrationTrack = try await narrationAsset.loadTracks(withMediaType: .audio).first,
               let compositionTrack = composition.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid
-              ) else { return }
+              ) else { return nil }
         let narrationDuration = try await narrationAsset.load(.duration)
         let range = CMTimeRange(start: .zero, duration: CMTimeMinimum(narrationDuration, duration))
         try compositionTrack.insertTimeRange(range, of: narrationTrack, at: .zero)
+        return compositionTrack
     }
 
-    private nonisolated func makeNarrationReader(
-        for asset: AVURLAsset,
+    private nonisolated func makeMixedAudioReader(
+        sourceAsset: AVURLAsset,
+        snapshot: Snapshot,
         duration: CMTime
-    ) async throws -> (reader: AVAssetReader, output: AVAssetReaderTrackOutput, input: AVAssetWriterInput) {
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
-            throw ExportError.noNarrationAudioTrack
+    ) async throws -> (reader: AVAssetReader, output: AVAssetReaderAudioMixOutput)? {
+        let composition = AVMutableComposition()
+        var audioMixParameters: [AVMutableAudioMixInputParameters] = []
+
+        if Self.isAudible(snapshot.sourceAudioVolume),
+           let sourceTrack = try await sourceAsset.loadTracks(withMediaType: .audio).first,
+           let compositionTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+           ) {
+            try compositionTrack.insertTimeRange(snapshot.trimRange, of: sourceTrack, at: .zero)
+            audioMixParameters.append(Self.audioMixParameters(for: compositionTrack, volume: snapshot.sourceAudioVolume))
         }
 
-        let reader = try AVAssetReader(asset: asset)
-        let assetDuration = try await asset.load(.duration)
-        reader.timeRange = CMTimeRange(start: .zero, duration: CMTimeMinimum(assetDuration, duration))
+        if let narrationTrack = try await insertNarrationAudio(
+            from: snapshot.narrationAudioURL,
+            into: composition,
+            duration: duration,
+            volume: snapshot.narrationAudioVolume
+        ) {
+            audioMixParameters.append(Self.audioMixParameters(for: narrationTrack, volume: snapshot.narrationAudioVolume))
+        }
 
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+        let tracks = composition.tracks(withMediaType: .audio)
+        guard !tracks.isEmpty else { return nil }
+
+        let reader = try AVAssetReader(asset: composition)
+        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsBigEndianKey: false,
@@ -444,19 +457,26 @@ actor ExportService {
             AVNumberOfChannelsKey: 2,
             AVSampleRateKey: 44100
         ])
-        if reader.canAdd(output) { reader.add(output) }
-
-        let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVNumberOfChannelsKey: 2,
-            AVSampleRateKey: 44100,
-            AVEncoderBitRateKey: 128_000
-        ])
-        input.expectsMediaDataInRealTime = false
-        guard reader.startReading() else {
-            throw ExportError.readerStartFailed(reader.error)
+        if !audioMixParameters.isEmpty {
+            let audioMix = AVMutableAudioMix()
+            audioMix.inputParameters = audioMixParameters
+            output.audioMix = audioMix
         }
-        return (reader, output, input)
+        if reader.canAdd(output) { reader.add(output) }
+        return (reader, output)
+    }
+
+    private nonisolated static func audioMixParameters(
+        for track: AVCompositionTrack,
+        volume: Double
+    ) -> AVMutableAudioMixInputParameters {
+        let parameters = AVMutableAudioMixInputParameters(track: track)
+        parameters.setVolume(Float(max(0, min(volume, 1))), at: .zero)
+        return parameters
+    }
+
+    private nonisolated static func isAudible(_ volume: Double) -> Bool {
+        volume > 0.001
     }
 
     /// Returns a sample buffer whose presentation timestamp is shifted by `-offset`.
@@ -616,8 +636,9 @@ actor ExportService {
             shadow: project.shadow,
             shadowColor: (Color(hex: project.shadow.colorHex) ?? .black).ciColor,
             trimRange: trimRange,
-            includeSourceAudio: !project.isMuted,
-            narrationAudioURL: project.narrationAudioURL
+            sourceAudioVolume: project.sourceAudioVolume,
+            narrationAudioURL: project.narrationAudioURL,
+            narrationAudioVolume: project.narrationAudioVolume
         )
     }
 }

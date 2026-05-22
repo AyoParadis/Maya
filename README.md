@@ -7,7 +7,7 @@
 
   Native macOS app that turns `.mp4` and `.mov` screen recordings into polished framed product videos, and turns product image sets into conversion-focused carousel videos and stills. Maya AI Studio adds AI-directed trim and zoom suggestions, local Piper voiceovers, carousel OCR, device mockups, timeline editing, social aspect ratios, and export tools for makers, designers, and app teams.
 
-  Current release: **Maya AI Studio 2**
+  Current release: **Maya AI Studio 2.0.1**
 
   ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
@@ -43,24 +43,28 @@ Maya AI Studio has two top-level modes:
 - **Video** keeps the existing screen-recording editor: device framing, timeline trim, zoom animation, AI Director, background styling, and `.mp4` or transparent `.mov` export.
 - **Carousel** builds social image carousels from imported slides: choose layout and motion, generate/edit per-slide voiceovers, preview timing, check safe zones, and export videos, stills, or bundles.
 
-## Local Piper Narration
+## Local AI Narration
 
-Video and Carousel modes include a local narration workflow powered by Piper. Write a voiceover script in Maya, choose a Piper voice such as `en_US-lessac-medium`, generate a `.wav` file locally, and Maya includes that narration track in exported videos.
+Video and Carousel modes include local narration powered by selectable AI voice engines. Write a voiceover script in Maya, choose Piper or Kokoro, pick a voice, generate a `.wav` file locally, and Maya includes that narration track in exported videos.
 
-Maya installs Piper into its own local Python virtual environment in Application Support, then runs Piper from that environment:
+Maya installs each voice engine into its own local Python virtual environment in Application Support, then runs the selected engine from that environment:
 
 ```bash
 python3 -m venv "Application Support/Maya AI Studio/PiperEnvironment"
 "Application Support/Maya AI Studio/PiperEnvironment/bin/python" -m pip install --upgrade piper-tts
+python3 -m venv "Application Support/Maya AI Studio/KokoroEnvironment"
+"Application Support/Maya AI Studio/KokoroEnvironment/bin/python" -m pip install --upgrade "kokoro>=0.9.4" soundfile "misaki[en]"
 ```
 
-If Piper is missing when you generate a voiceover, Maya shows an **Install Piper** button in the voiceover panel and runs the local environment setup for you. This avoids changing the system Python installation and works around Homebrew's externally managed Python restrictions. After installation, Maya warms bundled English voice previews automatically in the background so voice browsing gets faster without exposing cache controls.
+The voiceover panel includes an engine picker, voice/reference picker, **Preview**, local storage usage, and a state-aware setup control. Missing engines show **Install selected engine**; installed engines show an installed status with **Refresh voices**; incompatible local environments show **Repair install**. Setup avoids changing the system Python installation, streams live package/download progress into the voiceover status area, and works around Homebrew's externally managed Python restrictions. After an engine installs or refreshes, Maya prepares cached previews for that engine's catalog voices so the Preview button responds quickly on later use.
 
-The voiceover panel includes a Piper voice picker, optional custom voice ID entry, and a **Preview** button that replays cached previews immediately when available. Normal voiceover statuses stay compact, while detailed copyable messages are reserved for errors.
+Piper remains the fastest fallback and supports custom Piper voice IDs. Kokoro adds downloadable premium local voices such as `af_heart`, `af_bella`, and `am_adam`; on macOS it may also need `espeak-ng` available on the system path.
 
-On first generation for a selected non-cached voice, Maya downloads the matching Piper voice files into Application Support, then reuses them for later renders. The default voice is `en_US-lessac-medium`. Generated narration and voice previews stay local; narration is cached until it is replaced, removed, or the current video/carousel project changes.
+On first generation for a selected non-cached Piper voice, Maya downloads the matching Piper voice files into Application Support, then reuses them for later renders. The default engine is Piper with `en_US-lessac-medium`. Generated narration and voice previews stay local; narration is cached until it is replaced, removed, or the current video/carousel project changes.
 
-In Carousel mode, Maya can also generate slide-by-slide voiceovers. Choose **Generate slide voiceovers** to use each slide's planned text first, fall back to local Apple Vision OCR for imported image text, generate one Piper clip per slide, place the clips on the carousel timeline, and automatically extend slide durations to fit the generated audio. The inspector keeps detected text copyable, lets users edit the spoken script, uses the local Codex CLI to clean OCR-damaged grammar and punctuation, and regenerates audio from the edited script without overwriting those manual fixes.
+Maya shows the selected engine's local asset size and total AI voice asset size in both Video and Carousel voiceover panels. The total includes engine Python environments, downloaded Piper voice models, and cached voice previews; it does not include generated project voiceover files. Use **Delete engine assets** to remove the selected engine's local environment, downloaded voice assets, and cached previews while keeping generated project voiceovers intact.
+
+In Carousel mode, Maya can also generate slide-by-slide voiceovers with the selected engine. Choose **Generate slide voiceovers** to use each slide's planned text first, fall back to local Apple Vision OCR for imported image text, generate one clip per slide, place the clips on the carousel timeline, and automatically extend slide durations to fit the generated audio. The inspector keeps detected text copyable, lets users edit the spoken script, uses the local Codex CLI to clean OCR-damaged grammar and punctuation, and regenerates audio from the edited script without overwriting those manual fixes.
 
 ## AI Director
 
@@ -103,6 +107,7 @@ Carousel mode includes:
 - Canvas presets for square, vertical, portrait social, landscape, and widescreen exports.
 - Generic and no-frame styling controls for corner radius, bezel width, bezel color, and shadows.
 - Timeline editing with draggable clip trimming, independent clip timeline positioning, zoom blocks, edge resizing, and playhead snapping.
+- Timeline volume controls for source recording audio and generated voiceover narration.
 - Inline side-panel animation editing with live canvas updates.
 - Local Piper narration generation in Video and Carousel modes for adding voiceover audio to exported videos.
 - Bundled animation preset preview videos.
@@ -125,6 +130,7 @@ Carousel mode includes:
 - Add zoom segments from the track or toolbar.
 - Drag zoom blocks to move them and drag their edges to resize them.
 - Snap animation timing to quarter-second marks and the playhead.
+- Adjust source recording audio and generated voiceover volume from the compact timeline toolbar.
 - Tune scale, focus, duration, easing, and zoom-in/out timing from the side editor.
 
 ### AI-assisted editing
@@ -160,7 +166,7 @@ Carousel mode includes:
 
 - Export social-ready `.mp4` files using the selected canvas aspect.
 - Export transparent `.mov` files with HEVC alpha when the background is set to none.
-- Exported videos include device frame, background, shadows, trim, zoom animation, and optional Piper narration.
+- Exported videos include device frame, background, shadows, trim, zoom animation, source audio volume, and optional Piper narration volume.
 - In Carousel mode, export H.264 `.mp4` slideshow videos with optional project-level or per-slide Piper narration. Carousel video quality presets include **Draft** (very low quality, fastest timing checks), **Fast**, **Standard**, and **High**.
 - Cancel active carousel video or bundle exports from the Export panel. Maya cancels the writer, removes incomplete output files, and reports stalled generated-frame exports with copyable diagnostics instead of leaving a 0-byte file.
 - Export matching `.png` still image sets for carousel uploads.
@@ -171,7 +177,7 @@ Carousel mode includes:
 | Key | Action |
 |---|---|
 | <kbd>Space</kbd> | Play / pause |
-| <kbd>M</kbd> | Mute / unmute |
+| <kbd>M</kbd> | Mute / unmute source audio |
 | <kbd>I</kbd> | Mark trim in |
 | <kbd>O</kbd> | Mark trim out |
 | <kbd>Delete</kbd> | Delete selected zoom event |
@@ -188,7 +194,8 @@ Carousel mode includes:
 - HEVC-with-alpha export support
 - Swift Observation and async/await
 - Sandboxed local video and image adoption for reliable preview and export access
-- Piper TTS integration through the local `python3 -m piper` command
+- Local TTS integration for Piper and Kokoro through isolated Python environments
+- Internal performance instrumentation with `os_signpost`, decoded image caching, and a Release benchmark mode
 
 ## Requirements
 
@@ -198,24 +205,31 @@ Carousel mode includes:
 - Images for Carousel mode, or a `.mp4`/`.mov` screen recording for Video mode
 - Codex CLI installed and signed in for AI Director and carousel script cleanup
 - A Codex account/subscription for local Codex CLI usage
-- Optional: Piper installed through Maya's **Install Piper** button for local narration generation
+- Optional: Local voice engines installed or refreshed through Maya's state-aware voice setup button for narration generation
 
 ## Releases
 
-The latest installable Maya AI Studio release is **Maya AI Studio 2**:
+The latest installable Maya AI Studio release is **Maya AI Studio 2.0.1**:
 
-[Download Maya AI Studio 2](https://github.com/AyoParadis/Maya/releases/tag/v2.0.0)
+[Download Maya AI Studio 2.0.1](https://github.com/AyoParadis/Maya/releases/tag/v2.0.1)
+
+### Maya AI Studio 2.0.1
+
+- Adds AI voice storage reporting in Video and Carousel voiceover panels, including total local voice asset usage and selected-engine usage.
+- Adds per-engine voice asset cleanup for installed engine files, downloaded voice models, and cached previews while keeping generated project voiceovers intact.
+- Makes Kokoro the default AI voice engine for new Video and Carousel projects.
+- Removes Chatterbox and F5-TTS from the selectable voice engines because their local preview paths could hang the app; Maya now ships the stable local Piper and Kokoro options.
 
 ### Maya AI Studio 2
 
 - Makes Carousel the default mode and refocuses it around imported slides, motion, local OCR, and one-button AI voiceovers.
-- Adds local Piper voiceover generation in both Video and Carousel, including automatic Piper setup, automatic English preview warming, custom voice IDs, cached previews, and compact status/error handling.
+- Adds local AI voiceover generation in both Video and Carousel, including Piper and Kokoro engine selection, automatic setup, custom voice IDs, cached previews, and compact status/error handling.
 - Adds carousel per-slide voiceovers that read visible slide text, fall back to local Apple Vision OCR, generate one audio clip per slide, align clips on the timeline, and extend slide durations to fit narration.
 - Adds editable slide narration in the inspector: copy detected text, edit the spoken script, clean OCR-damaged grammar and punctuation through the local Codex CLI, and regenerate audio from the edited script.
 - Improves carousel OCR cleanup with local preprocessing, artifact filtering, watermark/handle filtering, and cached OCR results.
 - Rebuilds Carousel export around a reliable generated-frame `AVAssetWriter` pipeline with explicit phases, real progress, cancellation, partial-file cleanup, stalled-export diagnostics, and video quality presets from **Draft** through **High**.
 - Reorganizes Carousel export controls so Video, Images, and Bundle appear as equal format choices, with active export progress shown only while work is running.
-- Adds timeline voiceover blocks and left-click action menus for cards, voiceovers, and motion, while keeping drag-to-reorder behavior so attached audio moves with its slide.
+- Adds timeline voiceover blocks and action menus for cards, voiceovers, and motion, available from the ellipsis button or a trackpad secondary click/Control-click, while keeping drag-to-reorder behavior so attached audio moves with its slide.
 - Cleans up the app chrome and sidebars with a native macOS split-view sidebar, shared Video/Carousel AI Voiceover components, collapsible tinted sections, cleaner spacing, and the Video/Carousel switch in the titlebar.
 - Removes the old Carousel Director/draft/approval workflow so Carousel is simpler, faster, and local-first: imported images stay on device, OCR runs locally, and Codex is only used for optional script cleanup.
 
@@ -250,6 +264,16 @@ open Maya.xcodeproj
 ```
 
 Run the `Maya` target in Xcode. The built app is named **Maya AI Studio**.
+
+## Performance benchmarks
+
+Maya includes a local Release benchmark harness for safe performance work:
+
+```bash
+scripts/performance-benchmark.sh
+```
+
+The script builds the Release app with signing disabled, runs the timeline drag regression check, then launches Maya with `--maya-performance-benchmark`. The benchmark prints wall-clock timings for Carousel Draft/Standard/High exports and available narration preview engines; video import/export, thumbnail, and poster paths are instrumented in-app with `os_signpost` because those AVFoundation paths should be measured from the normal app lifecycle rather than the headless benchmark launcher. Performance spans are emitted under the `com.dlmapps.MayaAIStudio` subsystem for Instruments.
 
 ## Code map
 

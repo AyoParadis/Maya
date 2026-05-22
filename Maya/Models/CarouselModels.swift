@@ -266,7 +266,9 @@ final class CarouselProject: Identifiable {
     var defaultCardDuration: Double
     var showSafeZones: Bool
     var narrationScript: String
+    var narrationEngine: NarrationEngine
     var piperVoice: String
+    var narrationEngineInstallationStatus: NarrationEngineInstallationStatus
     var narrationAudioURL: URL?
     var narrationDisplayName: String?
     var isGeneratingNarration: Bool
@@ -293,7 +295,9 @@ final class CarouselProject: Identifiable {
         self.defaultCardDuration = 2.0
         self.showSafeZones = false
         self.narrationScript = ""
-        self.piperVoice = PiperNarrationService.defaultVoice
+        self.narrationEngine = .kokoro
+        self.piperVoice = NarrationEngine.kokoro.defaultVoice
+        self.narrationEngineInstallationStatus = .notInstalled
         self.narrationAudioURL = nil
         self.narrationDisplayName = nil
         self.isGeneratingNarration = false
@@ -305,9 +309,9 @@ final class CarouselProject: Identifiable {
     }
 
     deinit {
-        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
         for card in cards {
-            PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+            NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
         }
     }
 
@@ -409,7 +413,7 @@ final class CarouselProject: Identifiable {
 
     func removeCard(id: UUID) {
         guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
-        PiperNarrationService.cleanupGeneratedNarration(at: cards[index].narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: cards[index].narrationAudioURL)
         cards.remove(at: index)
         if selectedCardID == id {
             selectedCardID = cards.isEmpty ? nil : cards[max(0, min(index, cards.count - 1))].id
@@ -447,7 +451,7 @@ final class CarouselProject: Identifiable {
 
     func removeVoiceover(for cardID: UUID) {
         guard let card = cards.first(where: { $0.id == cardID }) else { return }
-        PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
         card.detectedNarrationText = ""
         card.narrationScript = ""
         card.narrationScriptEdited = false

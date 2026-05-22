@@ -269,6 +269,7 @@ struct CarouselStudioView: View {
         guard !project.isGeneratingNarration,
               !project.isInstallingPiper,
               !project.isCachingVoicePreviews else { return }
+        let engine = project.narrationEngine
         let voice = project.piperVoice
         card.narrationStatus = .detecting
         card.narrationError = nil
@@ -289,10 +290,14 @@ struct CarouselStudioView: View {
                     await MainActor.run {
                         card.narrationStatus = .generating
                     }
-                    let audio = try await CarouselSlideNarrationService.generateAudio(script: editedScript, voice: voice)
+                    let audio = try await CarouselSlideNarrationService.generateAudio(
+                        script: editedScript,
+                        engine: engine,
+                        voice: voice
+                    )
                     await MainActor.run {
                         if let audio {
-                            PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+                            NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
                             card.narrationScript = CarouselSlideNarrationService.cleanedSpokenScript(from: editedScript)
                             card.narrationScriptEdited = true
                             card.narrationAudioURL = audio.url
@@ -301,7 +306,7 @@ struct CarouselStudioView: View {
                             card.duration = max(0.5, min(30.0, audio.duration + 0.4))
                             project.narrationMessage = "Generated voiceover for \(card.displayName)."
                         } else {
-                            PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+                            NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
                             card.narrationAudioURL = nil
                             card.narrationAudioDuration = nil
                             card.narrationStatus = .skipped
@@ -312,10 +317,10 @@ struct CarouselStudioView: View {
                     return
                 }
 
-                let result = try await CarouselSlideNarrationService.generate(from: source, voice: voice)
+                let result = try await CarouselSlideNarrationService.generate(from: source, engine: engine, voice: voice)
                 await MainActor.run {
                     if let result {
-                        PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+                        NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
                         card.detectedNarrationText = result.detectedText
                         card.narrationScript = result.script
                         card.narrationScriptEdited = false
@@ -325,7 +330,7 @@ struct CarouselStudioView: View {
                         card.duration = max(0.5, min(30.0, result.audioDuration + 0.4))
                         project.narrationMessage = "Generated voiceover for \(card.displayName)."
                     } else {
-                        PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+                        NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
                         card.detectedNarrationText = ""
                         card.narrationScript = ""
                         card.narrationScriptEdited = false
@@ -338,7 +343,7 @@ struct CarouselStudioView: View {
                 }
             } catch {
                 await MainActor.run {
-                    PiperNarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
+                    NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
                     card.narrationAudioURL = nil
                     card.narrationAudioDuration = nil
                     card.narrationStatus = .failed

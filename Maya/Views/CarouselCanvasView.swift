@@ -50,9 +50,10 @@ private struct CarouselCardPreview: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottomLeading) {
-                if let imageURL = card.imageURL, let image = NSImage(contentsOf: imageURL) {
-                    Image(nsImage: image)
-                        .resizable()
+                if let imageURL = card.imageURL {
+                    CachedImageView(url: imageURL, maxPixelSize: 1920) {
+                        Color.black
+                    }
                         .scaledToFill()
                         .scaleEffect(scale)
                         .offset(x: offset.width, y: offset.height)

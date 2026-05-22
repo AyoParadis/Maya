@@ -89,7 +89,9 @@ final class Project {
     var lastExportError: String?
 
     var narrationScript: String = ""
-    var piperVoice: String = PiperNarrationService.defaultVoice
+    var narrationEngine: NarrationEngine = .kokoro
+    var piperVoice: String = NarrationEngine.kokoro.defaultVoice
+    var narrationEngineInstallationStatus: NarrationEngineInstallationStatus = .notInstalled
     var narrationAudioURL: URL?
     var narrationDisplayName: String?
     var isGeneratingNarration: Bool = false
@@ -98,12 +100,36 @@ final class Project {
     var isPreviewingVoice: Bool = false
     var narrationMessage: String?
 
-    var isMuted: Bool = true {
-        didSet { player?.isMuted = isMuted }
+    var sourceAudioVolume: Double = 0 {
+        didSet {
+            sourceAudioVolume = max(0, min(sourceAudioVolume, 1))
+            if sourceAudioVolume > 0.001 {
+                sourceAudioVolumeBeforeMute = sourceAudioVolume
+            }
+            applySourceAudioVolume()
+        }
+    }
+
+    var narrationAudioVolume: Double = 1 {
+        didSet {
+            narrationAudioVolume = max(0, min(narrationAudioVolume, 1))
+        }
+    }
+
+    var isMuted: Bool {
+        get { sourceAudioVolume <= 0.001 }
+        set {
+            if newValue {
+                sourceAudioVolume = 0
+            } else {
+                sourceAudioVolume = max(sourceAudioVolumeBeforeMute, 0.5)
+            }
+        }
     }
 
     private var loopObserver: NSObjectProtocol?
     private var timeObserver: Any?
+    private var sourceAudioVolumeBeforeMute: Double = 1
 
     deinit {
         if let o = loopObserver { NotificationCenter.default.removeObserver(o) }
@@ -111,7 +137,7 @@ final class Project {
             player.removeTimeObserver(observer)
         }
         Self.cleanupCachedSource(at: videoURL)
-        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
     }
 
     var durationSeconds: Double {
@@ -317,7 +343,12 @@ final class Project {
     }
 
     func toggleMute() {
-        isMuted.toggle()
+        isMuted = !isMuted
+    }
+
+    private func applySourceAudioVolume() {
+        player?.volume = Float(sourceAudioVolume)
+        player?.isMuted = sourceAudioVolume <= 0.001
     }
 
     /// Seek to a project-timeline second. The player itself runs in source coords so we
@@ -334,6 +365,12 @@ final class Project {
     /// Loads a video. `url` must already be inside the app sandbox (use
     /// `Project.adoptIntoSandbox(_:)` first). Cleans up the previous working copy.
     func loadVideo(url: URL) async {
+        let signpost = PerformanceMetrics.begin(.videoLoad, detail: url.lastPathComponent)
+        let timer = WallClockTimer()
+        defer {
+            PerformanceMetrics.end(.videoLoad, id: signpost, detail: "\(timer.elapsedMilliseconds)ms")
+        }
+
         let previousURL = videoURL
         let asset = AVURLAsset(url: url)
         var naturalSize = CGSize.zero
@@ -349,6 +386,7 @@ final class Project {
 
         let item = AVPlayerItem(asset: asset)
         let newPlayer = AVPlayer(playerItem: item)
+        newPlayer.volume = Float(sourceAudioVolume)
         newPlayer.isMuted = isMuted
 
         if let o = loopObserver { NotificationCenter.default.removeObserver(o) }
@@ -378,7 +416,7 @@ final class Project {
         self.clipTimelineStart = 0
         self.currentSeconds = 0
         self.isPlaying = true
-        PiperNarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
+        NarrationService.cleanupGeneratedNarration(at: narrationAudioURL)
         self.narrationAudioURL = nil
         self.narrationDisplayName = nil
         self.narrationMessage = nil

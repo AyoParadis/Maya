@@ -31,157 +31,181 @@ final class CarouselExportService {
         cancellation: CarouselExportCancellation,
         progress: @escaping @Sendable (CarouselExportProgress) -> Void
     ) async throws {
-        let exportCards = project.exportCards
-        guard !exportCards.isEmpty else { throw CarouselExportError.noCards }
+        try await PerformanceMetrics.measure(.carouselExportVideo, detail: "\(project.exportQuality.label) \(project.exportCards.count) cards") {
+            let exportCards = project.exportCards
+            guard !exportCards.isEmpty else { throw CarouselExportError.noCards }
 
-        let access = outputURL.startAccessingSecurityScopedResource()
-        defer { if access { outputURL.stopAccessingSecurityScopedResource() } }
+            let access = outputURL.startAccessingSecurityScopedResource()
+            defer { if access { outputURL.stopAccessingSecurityScopedResource() } }
 
-        progress(.init(phase: .preparing, progress: 0, detail: exportDetail(project: project, outputURL: outputURL)))
+            progress(.init(phase: .preparing, progress: 0, detail: exportDetail(project: project, outputURL: outputURL)))
 
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            try FileManager.default.removeItem(at: outputURL)
-        }
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                try FileManager.default.removeItem(at: outputURL)
+            }
 
-        let renderSize = project.canvasAspect.renderSize(for: project.exportQuality)
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        cancellation.setWriter(writer, outputURL: outputURL)
-        let settings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: Int(renderSize.width),
-            AVVideoHeightKey: Int(renderSize.height),
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: bitrate(for: renderSize),
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+            let renderSize = project.canvasAspect.renderSize(for: project.exportQuality)
+            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            cancellation.setWriter(writer, outputURL: outputURL)
+            let settings: [String: Any] = [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: Int(renderSize.width),
+                AVVideoHeightKey: Int(renderSize.height),
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: bitrate(for: renderSize),
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                ]
             ]
-        ]
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
-        input.expectsMediaDataInRealTime = false
-        guard writer.canAdd(input) else { throw CarouselExportError.writerSetupFailed }
-        writer.add(input)
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+            input.expectsMediaDataInRealTime = false
+            guard writer.canAdd(input) else { throw CarouselExportError.writerSetupFailed }
+            writer.add(input)
 
-        let narrationReader = try await makeNarrationReader(
-            for: project,
-            maxDuration: CMTime(seconds: project.totalDuration, preferredTimescale: 600)
-        )
-        if let narrationReader {
-            guard writer.canAdd(narrationReader.input) else {
-                throw CarouselExportError.writerSetupFailed
+            let narrationReader = try await makeNarrationReader(
+                for: project,
+                maxDuration: CMTime(seconds: project.totalDuration, preferredTimescale: 600)
+            )
+            if let narrationReader {
+                guard writer.canAdd(narrationReader.input) else {
+                    throw CarouselExportError.writerSetupFailed
+                }
+                writer.add(narrationReader.input)
             }
-            writer.add(narrationReader.input)
+
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: input,
+                sourcePixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+                    kCVPixelBufferWidthKey as String: Int(renderSize.width),
+                    kCVPixelBufferHeightKey as String: Int(renderSize.height)
+                ]
+            )
+
+            guard writer.startWriting() else { throw CarouselExportError.writerFailed(writer.error) }
+            writer.startSession(atSourceTime: .zero)
+            try Task.checkCancellation()
+
+            let fps = project.exportQuality.fps
+            let totalFrames = exportCards.reduce(0) { $0 + max(1, Int((max(0.5, $1.duration) * Double(fps)).rounded())) }
+            let activity = CarouselExportActivity()
+            if let narrationReader {
+                guard narrationReader.reader.startReading() else {
+                    throw CarouselExportError.writerFailed(narrationReader.reader.error)
+                }
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { [self] in
+                        try await self.pumpVideo(
+                            cards: exportCards,
+                            project: project,
+                            renderSize: renderSize,
+                            fps: fps,
+                            totalFrames: totalFrames,
+                            input: input,
+                            adaptor: adaptor,
+                            cancellation: cancellation,
+                            activity: activity,
+                            progress: { value in
+                                progress(.init(phase: .renderingFrames, progress: value * 0.9, detail: "Rendering frame output"))
+                            }
+                        )
+                    }
+                    group.addTask { [self] in
+                        try await self.pumpAudio(
+                            output: narrationReader.output,
+                            input: narrationReader.input,
+                            cancellation: cancellation,
+                            activity: activity,
+                            label: "Writing narration audio"
+                        )
+                    }
+                    group.addTask {
+                        try await self.watchForStall(
+                            activity: activity,
+                            cancellation: cancellation,
+                            phase: .renderingFrames,
+                            quality: project.exportQuality,
+                            renderSize: renderSize,
+                            fps: fps,
+                            cardCount: exportCards.count
+                        )
+                    }
+                    for _ in 0..<2 {
+                        try await group.next()
+                    }
+                    group.cancelAll()
+                }
+            } else {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { [self] in
+                        try await self.pumpVideo(
+                            cards: exportCards,
+                            project: project,
+                            renderSize: renderSize,
+                            fps: fps,
+                            totalFrames: totalFrames,
+                            input: input,
+                            adaptor: adaptor,
+                            cancellation: cancellation,
+                            activity: activity,
+                            progress: { value in
+                                progress(.init(phase: .renderingFrames, progress: value * 0.9, detail: "Rendering frame output"))
+                            }
+                        )
+                    }
+                    group.addTask {
+                        try await self.watchForStall(
+                            activity: activity,
+                            cancellation: cancellation,
+                            phase: .renderingFrames,
+                            quality: project.exportQuality,
+                            renderSize: renderSize,
+                            fps: fps,
+                            cardCount: exportCards.count
+                        )
+                    }
+                    _ = try await group.next()
+                    group.cancelAll()
+                }
+            }
+
+            try Task.checkCancellation()
+            try validateWriter(writer)
+            progress(.init(phase: .finalizing, progress: 0.95, detail: "Finalizing \(outputURL.lastPathComponent)"))
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                writer.finishWriting { continuation.resume() }
+            }
+
+            if writer.status == .failed {
+                throw CarouselExportError.writerFailed(writer.error)
+            }
+            if writer.status == .cancelled {
+                try? removePartialFile(outputURL)
+                throw CancellationError()
+            }
+            progress(.init(phase: .complete, progress: 1, detail: "Export complete"))
         }
+    }
 
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-                kCVPixelBufferWidthKey as String: Int(renderSize.width),
-                kCVPixelBufferHeightKey as String: Int(renderSize.height)
-            ]
-        )
-
-        guard writer.startWriting() else { throw CarouselExportError.writerFailed(writer.error) }
-        writer.startSession(atSourceTime: .zero)
-        try Task.checkCancellation()
-
-        let fps = project.exportQuality.fps
-        let totalFrames = exportCards.reduce(0) { $0 + max(1, Int((max(0.5, $1.duration) * Double(fps)).rounded())) }
-        let activity = CarouselExportActivity()
-        if let narrationReader {
-            guard narrationReader.reader.startReading() else {
-                throw CarouselExportError.writerFailed(narrationReader.reader.error)
-            }
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { [self] in
-                    try await self.pumpVideo(
-                        cards: exportCards,
-                        project: project,
-                        renderSize: renderSize,
-                        fps: fps,
-                        totalFrames: totalFrames,
-                        input: input,
-                        adaptor: adaptor,
-                        cancellation: cancellation,
-                        activity: activity,
-                        progress: { value in
-                            progress(.init(phase: .renderingFrames, progress: value * 0.9, detail: "Rendering frame output"))
-                        }
-                    )
-                }
-                group.addTask { [self] in
-                    try await self.pumpAudio(
-                        output: narrationReader.output,
-                        input: narrationReader.input,
-                        cancellation: cancellation,
-                        activity: activity,
-                        label: "Writing narration audio"
-                    )
-                }
+    private func preloadedImages(for cards: [CarouselCard], renderSize: CGSize) async -> [UUID: CGImage] {
+        let maxPixelSize = Int(max(renderSize.width, renderSize.height) * 1.35)
+        let sources = cards.compactMap { card -> (UUID, URL)? in
+            guard let imageURL = card.imageURL else { return nil }
+            return (card.id, imageURL)
+        }
+        return await withTaskGroup(of: (UUID, CGImage?).self, returning: [UUID: CGImage].self) { group in
+            for (id, imageURL) in sources {
                 group.addTask {
-                    try await self.watchForStall(
-                        activity: activity,
-                        cancellation: cancellation,
-                        phase: .renderingFrames,
-                        quality: project.exportQuality,
-                        renderSize: renderSize,
-                        fps: fps,
-                        cardCount: exportCards.count
-                    )
+                    let image = await ImageDecodeCache.shared.cgImage(for: imageURL, maxPixelSize: maxPixelSize)
+                    return (id, image)
                 }
-                for _ in 0..<2 {
-                    try await group.next()
-                }
-                group.cancelAll()
             }
-        } else {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { [self] in
-                    try await self.pumpVideo(
-                        cards: exportCards,
-                        project: project,
-                        renderSize: renderSize,
-                        fps: fps,
-                        totalFrames: totalFrames,
-                        input: input,
-                        adaptor: adaptor,
-                        cancellation: cancellation,
-                        activity: activity,
-                        progress: { value in
-                            progress(.init(phase: .renderingFrames, progress: value * 0.9, detail: "Rendering frame output"))
-                        }
-                    )
-                }
-                group.addTask {
-                    try await self.watchForStall(
-                        activity: activity,
-                        cancellation: cancellation,
-                        phase: .renderingFrames,
-                        quality: project.exportQuality,
-                        renderSize: renderSize,
-                        fps: fps,
-                        cardCount: exportCards.count
-                    )
-                }
-                _ = try await group.next()
-                group.cancelAll()
+
+            var images: [UUID: CGImage] = [:]
+            for await (id, image) in group {
+                if let image { images[id] = image }
             }
+            return images
         }
-
-        try Task.checkCancellation()
-        try validateWriter(writer)
-        progress(.init(phase: .finalizing, progress: 0.95, detail: "Finalizing \(outputURL.lastPathComponent)"))
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            writer.finishWriting { continuation.resume() }
-        }
-
-        if writer.status == .failed {
-            throw CarouselExportError.writerFailed(writer.error)
-        }
-        if writer.status == .cancelled {
-            try? removePartialFile(outputURL)
-            throw CancellationError()
-        }
-        progress(.init(phase: .complete, progress: 1, detail: "Export complete"))
     }
 
     private func pumpVideo(
@@ -201,13 +225,14 @@ final class CarouselExportService {
         let inputBox = UnsafeSendableBox(value: input)
         let adaptorBox = UnsafeSendableBox(value: adaptor)
         let renderer = self.renderer
+        let imageCache = await preloadedImages(for: cards, renderSize: renderSize)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state.continuation = continuation
             var frameIndex = 0
             var cardIndex = 0
             var localFrame = 0
-            var imageCache: [UUID: CGImage] = [:]
+            var staticFrameCache: [UUID: CGImage] = [:]
 
             inputBox.value.requestMediaDataWhenReady(on: queue) {
                 let input = inputBox.value
@@ -228,25 +253,25 @@ final class CarouselExportService {
 
                         let card = cards[cardIndex]
                         let framesForCard = max(1, Int((max(0.5, card.duration) * Double(fps)).rounded()))
-                        let sourceImage: CGImage?
-                        if let cached = imageCache[card.id] {
-                            sourceImage = cached
-                        } else if let imageURL = card.imageURL,
-                                  let image = NSImage(contentsOf: imageURL)?.cgImageForRendering {
-                            imageCache[card.id] = image
-                            sourceImage = image
-                        } else {
-                            sourceImage = nil
-                        }
+                        let sourceImage = imageCache[card.id]
 
-                        let time = Double(localFrame) / Double(fps)
-                        let cgImage = try renderer.renderCard(
-                            card,
-                            project: project,
-                            time: time,
-                            size: renderSize,
-                            sourceImage: sourceImage
-                        )
+                        let cgImage: CGImage
+                        if self.usesStaticFrame(for: card, project: project),
+                           let cached = staticFrameCache[card.id] {
+                            cgImage = cached
+                        } else {
+                            let time = Double(localFrame) / Double(fps)
+                            cgImage = try renderer.renderCard(
+                                card,
+                                project: project,
+                                time: time,
+                                size: renderSize,
+                                sourceImage: sourceImage
+                            )
+                            if self.usesStaticFrame(for: card, project: project) {
+                                staticFrameCache[card.id] = cgImage
+                            }
+                        }
                         let buffer = try self.pixelBuffer(from: cgImage, size: renderSize, pool: adaptor.pixelBufferPool)
                         let presentationTime = CMTime(value: CMTimeValue(frameIndex), timescale: fps)
                         guard adaptor.append(buffer, withPresentationTime: presentationTime) else {
@@ -256,6 +281,9 @@ final class CarouselExportService {
                         frameIndex += 1
                         localFrame += 1
                         activity.markProgress("frame \(frameIndex) of \(totalFrames)")
+                        if frameIndex == 1 || frameIndex.isMultiple(of: 120) {
+                            PerformanceMetrics.event(.carouselRenderFrame, detail: "frame \(frameIndex) of \(totalFrames)")
+                        }
                         progress(Double(frameIndex) / Double(max(totalFrames, 1)))
 
                         if localFrame >= framesForCard {
@@ -269,6 +297,11 @@ final class CarouselExportService {
                 }
             }
         }
+    }
+
+    private func usesStaticFrame(for card: CarouselCard, project: CarouselProject) -> Bool {
+        let motion = card.motionOverride ?? project.motionPreset
+        return motion == .still
     }
 
     private func makeNarrationReader(
@@ -410,9 +443,11 @@ final class CarouselExportService {
     }
 
     func exportImages(project: CarouselProject, to directory: URL) throws -> [URL] {
-        let access = directory.startAccessingSecurityScopedResource()
-        defer { if access { directory.stopAccessingSecurityScopedResource() } }
-        return try renderer.writeStillImages(project: project, to: directory)
+        try PerformanceMetrics.measure(.carouselExportImages, detail: "\(project.exportCards.count) cards") {
+            let access = directory.startAccessingSecurityScopedResource()
+            defer { if access { directory.stopAccessingSecurityScopedResource() } }
+            return try renderer.writeStillImages(project: project, to: directory)
+        }
     }
 
     func exportBundle(project: CarouselProject, to directory: URL, progress: @escaping @Sendable (CarouselExportProgress) -> Void) async throws {
