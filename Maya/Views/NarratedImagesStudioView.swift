@@ -12,7 +12,7 @@ struct NarratedImagesStudioView: View {
     @State private var isPlaying = false
     @State private var playbackAnchorTime = 0.0
     @State private var playbackStartedAt: Date?
-    @State private var isAdvancingPlayback = false
+    @State private var playbackTickTime: Double?
     @State private var isInspectorVisible = true
     @State private var voiceoverPlayer: AVAudioPlayer?
     @State private var voiceoverSceneID: UUID?
@@ -121,11 +121,10 @@ struct NarratedImagesStudioView: View {
                 stopVoiceoverPlayback()
             }
 
-            isAdvancingPlayback = true
+            playbackTickTime = nextTime
             currentTime = nextTime
             project.selectScene(at: currentTime)
-            isAdvancingPlayback = false
-            syncVoiceoverPlayback()
+            syncVoiceoverPlayback(correctExistingPlayer: false)
         }
         .onChange(of: isPlaying) { _, playing in
             if playing {
@@ -136,13 +135,18 @@ struct NarratedImagesStudioView: View {
                 stopVoiceoverPlayback()
             }
         }
-        .onChange(of: currentTime) { _, _ in
-            guard isPlaying, !isAdvancingPlayback else { return }
+        .onChange(of: currentTime) { _, newValue in
+            if let playbackTickTime,
+               abs(playbackTickTime - newValue) < 0.002 {
+                self.playbackTickTime = nil
+                return
+            }
+            guard isPlaying else { return }
             startPlaybackClock(at: currentTime)
             syncVoiceoverPlayback()
         }
         .onChange(of: workspace.selectedProject.selectedSceneID) { _, _ in
-            guard !isPlaying, !isAdvancingPlayback else { return }
+            guard !isPlaying else { return }
             guard let id = workspace.selectedProject.selectedSceneID else { return }
             currentTime = workspace.selectedProject.startTime(for: id)
         }
@@ -493,7 +497,7 @@ struct NarratedImagesStudioView: View {
         workspace.activeExportTask = task
     }
 
-    private func syncVoiceoverPlayback() {
+    private func syncVoiceoverPlayback(correctExistingPlayer: Bool = true) {
         let project = workspace.selectedProject
         guard isPlaying,
               let sample = project.timelineSample(at: currentTime),
@@ -504,12 +508,15 @@ struct NarratedImagesStudioView: View {
         let maxTime = sample.scene.narrationAudioDuration ?? sample.localTime
         let targetTime = max(0, min(sample.localTime, maxTime))
         if voiceoverSceneID == sample.scene.id, let player = voiceoverPlayer {
-            if abs(player.currentTime - targetTime) > 0.25 {
+            if correctExistingPlayer, abs(player.currentTime - targetTime) > 0.35 {
                 player.currentTime = targetTime
             }
-            if !player.isPlaying { player.play() }
+            if !player.isPlaying, sample.localTime < maxTime - 0.03 {
+                player.play()
+            }
             return
         }
+        guard sample.localTime < maxTime - 0.03 else { return }
         stopVoiceoverPlayback()
         do {
             let player = try AVAudioPlayer(contentsOf: audioURL)

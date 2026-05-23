@@ -7,7 +7,7 @@
 
   Maya turns screen recordings and product image sets into polished videos, transparent overlays, carousel assets, and launch-ready social clips.
 
-  Current release: **Maya AI Studio 2.5**
+  Current release: **Maya AI Studio 2.5.1**
 
 </div>
 
@@ -21,7 +21,7 @@ The public app name is **Maya AI Studio** and the bundle identifier is `com.dlma
 
 ## Three Creation Modes
 
-Maya 2.5 is built around three distinct creation modes, each tuned for a different content workflow:
+Maya 2.5.1 is built around three distinct creation modes, each tuned for a different content workflow:
 
 - **Video Mode** turns screen recordings into polished product demos, social videos, transparent overlays, and device mockup exports.
 - **Carousel Mode** turns product images and screenshots into motion carousels, still image sets, narrated slide videos, and handoff bundles.
@@ -149,6 +149,6 @@ Maya can export:
 
 ## Release
 
-Latest release: **Maya AI Studio 2.5**
+Latest release: **Maya AI Studio 2.5.1**
 
-[Download Maya AI Studio 2.5](https://github.com/AyoParadis/Maya/releases/tag/v2.5)
+[Download Maya AI Studio 2.5.1](https://github.com/AyoParadis/Maya/releases/tag/v2.5.1)

@@ -12,7 +12,7 @@ struct CarouselStudioView: View {
     @State private var isPlaying = false
     @State private var playbackAnchorTime = 0.0
     @State private var playbackStartedAt: Date?
-    @State private var isAdvancingPlayback = false
+    @State private var playbackTickTime: Double?
     @State private var voiceoverPlayer: AVAudioPlayer?
     @State private var voiceoverCardID: UUID?
     @State private var isInspectorVisible = true
@@ -99,11 +99,10 @@ struct CarouselStudioView: View {
                         stopVoiceoverPlayback()
                     }
 
-                    isAdvancingPlayback = true
+                    playbackTickTime = nextTime
                     currentTime = nextTime
                     project.selectCard(at: currentTime)
-                    isAdvancingPlayback = false
-                    syncVoiceoverPlayback()
+                    syncVoiceoverPlayback(correctExistingPlayer: false)
                 }
                 .onChange(of: isPlaying) { _, playing in
                     if playing {
@@ -114,13 +113,18 @@ struct CarouselStudioView: View {
                         stopVoiceoverPlayback()
                     }
                 }
-                .onChange(of: currentTime) { _, _ in
-                    guard isPlaying, !isAdvancingPlayback else { return }
+                .onChange(of: currentTime) { _, newValue in
+                    if let playbackTickTime,
+                       abs(playbackTickTime - newValue) < 0.002 {
+                        self.playbackTickTime = nil
+                        return
+                    }
+                    guard isPlaying else { return }
                     startPlaybackClock(at: currentTime)
                     syncVoiceoverPlayback()
                 }
                 .onChange(of: workspace.selectedProject.selectedCardID) { _, _ in
-                    guard !isPlaying, !isAdvancingPlayback else { return }
+                    guard !isPlaying else { return }
                     guard let id = workspace.selectedProject.selectedCardID else { return }
                     currentTime = workspace.selectedProject.startTime(for: id)
                 }
@@ -455,7 +459,7 @@ struct CarouselStudioView: View {
         }
     }
 
-    private func syncVoiceoverPlayback() {
+    private func syncVoiceoverPlayback(correctExistingPlayer: Bool = true) {
         let project = workspace.selectedProject
         guard isPlaying,
               let sample = project.timelineSample(at: currentTime),
@@ -468,15 +472,16 @@ struct CarouselStudioView: View {
         let targetTime = max(0, min(sample.localTime, maxTime))
 
         if voiceoverCardID == sample.card.id, let player = voiceoverPlayer {
-            if abs(player.currentTime - targetTime) > 0.25 {
+            if correctExistingPlayer, abs(player.currentTime - targetTime) > 0.35 {
                 player.currentTime = targetTime
             }
-            if !player.isPlaying {
+            if !player.isPlaying, sample.localTime < maxTime - 0.03 {
                 player.play()
             }
             return
         }
 
+        guard sample.localTime < maxTime - 0.03 else { return }
         stopVoiceoverPlayback()
         do {
             let player = try AVAudioPlayer(contentsOf: audioURL)
