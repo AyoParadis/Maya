@@ -9,7 +9,6 @@
 
   Current release: **Maya AI Studio 2.0.2**
 
-  ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
 
 ---
@@ -19,6 +18,16 @@
 Maya AI Studio is a native macOS creative editor for makers, designers, and app teams. It helps turn raw app recordings, product screenshots, and launch assets into finished videos without using a heavyweight video editor.
 
 The public app name is **Maya AI Studio** and the bundle identifier is `com.dlmapps.MayaAIStudio`. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target.
+
+## Screenshots
+
+### Video Mode
+
+![Maya AI Studio Video mode](docs/video-mode.png)
+
+### Carousel Mode
+
+![Maya AI Studio Carousel mode](docs/carousel-mode.png)
 
 ## Modes
 
