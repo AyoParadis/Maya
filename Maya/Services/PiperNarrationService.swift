@@ -98,14 +98,26 @@ enum NarrationService {
 
     nonisolated static func generate(_ request: NarrationRequest) async throws -> URL {
         try await PerformanceMetrics.measure(.narrationGenerate, detail: request.engine.displayName) {
+            let cachedURL = try generatedNarrationURL(for: request)
+            if FileManager.default.fileExists(atPath: cachedURL.path) {
+                PerformanceMetrics.event(.narrationCacheHit, detail: "\(request.engine.displayName) \(request.voice)")
+                return cachedURL
+            }
+            try FileManager.default.createDirectory(
+                at: cachedURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             switch request.engine {
             case .piper:
-                return try await PiperNarrationService.generate(.init(text: request.text, voice: request.voice))
+                let generated = try await PiperNarrationService.generate(.init(text: request.text, voice: request.voice))
+                try replaceItem(at: cachedURL, with: generated)
+                return cachedURL
             case .kokoro:
                 let outputURL = try narrationDirectory()
                     .appendingPathComponent("\(UUID().uuidString)-narration.wav")
                 try await PythonNarrationEngineService.synthesize(request, outputURL: outputURL)
-                return outputURL
+                try replaceItem(at: cachedURL, with: outputURL)
+                return cachedURL
             }
         }
     }
@@ -190,6 +202,12 @@ enum NarrationService {
         }
     }
 
+    nonisolated static func warmEngines(engine: NarrationEngine) async {
+        if engine == .kokoro {
+            try? await PythonNarrationEngineService.warm(engine)
+        }
+    }
+
     nonisolated static func cacheVoicePreviews(
         for engine: NarrationEngine,
         progress: (@Sendable (String) -> Void)? = nil
@@ -228,6 +246,20 @@ enum NarrationService {
         return dir
     }
 
+    nonisolated private static func generatedNarrationDirectory(for engine: NarrationEngine) throws -> URL {
+        let base = try FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let dir = base
+            .appendingPathComponent("GeneratedNarrationCache", isDirectory: true)
+            .appendingPathComponent(engine.rawValue, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     nonisolated private static func previewDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .cachesDirectory,
@@ -250,12 +282,33 @@ enum NarrationService {
         return try previewDirectory().appendingPathComponent("\(digest)-preview.wav")
     }
 
+    nonisolated private static func generatedNarrationURL(for request: NarrationRequest) throws -> URL {
+        let key = [
+            request.engine.rawValue,
+            request.voice.trimmingCharacters(in: .whitespacesAndNewlines),
+            request.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        ].joined(separator: "\n")
+        let digest = SHA256.hash(data: Data(key.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return try generatedNarrationDirectory(for: request.engine).appendingPathComponent("\(digest)-narration.wav")
+    }
+
+    nonisolated private static func replaceItem(at destination: URL, with source: URL) throws {
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+    }
+
     nonisolated private static func assetURLs(for engine: NarrationEngine) -> [URL] {
         switch engine {
         case .piper:
-            return PiperNarrationService.assetURLs()
+            return PiperNarrationService.assetURLs() + [try? generatedNarrationDirectory(for: engine)].compactMap(\.self)
         case .kokoro:
-            return PythonNarrationEngineService.assetURLs(for: engine) + premiumPreviewURLs(for: engine)
+            return PythonNarrationEngineService.assetURLs(for: engine)
+                + premiumPreviewURLs(for: engine)
+                + [try? generatedNarrationDirectory(for: engine)].compactMap(\.self)
         }
     }
 
@@ -267,6 +320,8 @@ enum NarrationService {
 }
 
 private enum PythonNarrationEngineService {
+    private static let workerBox = PythonNarrationWorkerBox()
+
     nonisolated static func installationStatus(for engine: NarrationEngine) async -> NarrationEngineInstallationStatus {
         guard let environmentDirectory = try? environmentDirectory(for: engine) else { return .notInstalled }
         let python = environmentDirectory.appendingPathComponent("bin/python")
@@ -320,6 +375,16 @@ private enum PythonNarrationEngineService {
         )
     }
 
+    nonisolated static func warm(_ engine: NarrationEngine) async throws {
+        guard engine == .kokoro else { return }
+        let python = try pythonPath(for: engine)
+        guard FileManager.default.isExecutableFile(atPath: python) else {
+            throw PiperNarrationError.engineNotInstalled(engine.displayName)
+        }
+        let worker = await workerBox.worker(configuration: workerConfiguration(for: engine, python: python))
+        try await worker.warm()
+    }
+
     nonisolated static func synthesize(_ request: NarrationRequest, outputURL: URL) async throws {
         let cleanedText = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedText.isEmpty else {
@@ -339,6 +404,24 @@ private enum PythonNarrationEngineService {
         let voice = request.voice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? request.engine.defaultVoice
             : request.voice.trimmingCharacters(in: .whitespacesAndNewlines)
+        if request.engine == .kokoro {
+            do {
+                let worker = await workerBox.worker(configuration: workerConfiguration(for: request.engine, python: python))
+                _ = try await worker.request([
+                    "text": cleanedText,
+                    "voice": voice,
+                    "output": outputURL.path
+                ])
+                PerformanceMetrics.event(.pythonWorker, detail: "\(request.engine.displayName) synthesized")
+                guard FileManager.default.fileExists(atPath: outputURL.path) else {
+                    throw PiperNarrationError.outputMissing
+                }
+                return
+            } catch {
+                PerformanceMetrics.event(.pythonWorker, detail: "Kokoro worker fallback: \(error.localizedDescription)")
+                await workerBox.reset()
+            }
+        }
         try await runProcess(
             python,
             arguments: ["-c", script(for: request.engine), cleanedText, voice, outputURL.path],
@@ -404,6 +487,72 @@ private enum PythonNarrationEngineService {
             except Exception:
                 audio = chunks[0]
             sf.write(output, audio, 24000)
+            """
+        }
+    }
+
+    nonisolated private static func workerConfiguration(for engine: NarrationEngine, python: String) -> PersistentPythonJSONWorker.Configuration {
+        PersistentPythonJSONWorker.Configuration(
+            executable: python,
+            arguments: [],
+            workingDirectory: (try? applicationSupportDirectory()) ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true),
+            environment: [
+                "PYTORCH_ENABLE_MPS_FALLBACK": "1",
+                "TOKENIZERS_PARALLELISM": "false"
+            ],
+            script: workerScript(for: engine)
+        )
+    }
+
+    nonisolated private static func workerScript(for engine: NarrationEngine) -> String {
+        switch engine {
+        case .piper:
+            ""
+        case .kokoro:
+            """
+            import json
+            import sys
+            import traceback
+            import soundfile as sf
+            from kokoro import KPipeline
+
+            pipelines = {}
+
+            def respond(request_id, ok, payload="", error=""):
+                print("MAYA_JSON:" + json.dumps({
+                    "id": request_id,
+                    "ok": ok,
+                    "payload": payload,
+                    "error": error
+                }), flush=True)
+
+            for line in sys.stdin:
+                try:
+                    request = json.loads(line)
+                    request_id = request.get("id", "")
+                    text = str(request.get("text", "")).strip()
+                    voice = str(request.get("voice", "")).strip() or "af_heart"
+                    output = str(request.get("output", "")).strip()
+                    if not text or not output:
+                        raise RuntimeError("Missing text or output path.")
+                    lang_code = voice[:1] if voice else "a"
+                    if lang_code not in pipelines:
+                        pipelines[lang_code] = KPipeline(lang_code=lang_code)
+                    generator = pipelines[lang_code](text, voice=voice)
+                    chunks = []
+                    for _, _, audio in generator:
+                        chunks.append(audio)
+                    if not chunks:
+                        raise RuntimeError("Kokoro did not generate audio.")
+                    try:
+                        import numpy as np
+                        audio = np.concatenate(chunks)
+                    except Exception:
+                        audio = chunks[0]
+                    sf.write(output, audio, 24000)
+                    respond(request_id, True, output)
+                except Exception as exc:
+                    respond(request.get("id", "") if "request" in locals() else "", False, "", str(exc) + "\\n" + traceback.format_exc())
             """
         }
     }
@@ -634,6 +783,33 @@ nonisolated private final class ProcessProgressReporter: @unchecked Sendable {
                     && !line.localizedCaseInsensitiveContains("[notice]")
                     && !line.localizedCaseInsensitiveContains("already satisfied")
             }
+    }
+}
+
+private actor PythonNarrationWorkerBox {
+    private var worker: PersistentPythonJSONWorker?
+    private var signature: String?
+
+    func worker(configuration: PersistentPythonJSONWorker.Configuration) async -> PersistentPythonJSONWorker {
+        let nextSignature = [
+            configuration.executable,
+            configuration.arguments.joined(separator: "\u{1F}"),
+            configuration.workingDirectory.path
+        ].joined(separator: "\u{1E}")
+        if let worker, signature == nextSignature {
+            return worker
+        }
+        await worker?.stop()
+        let worker = PersistentPythonJSONWorker(configuration: configuration)
+        self.worker = worker
+        signature = nextSignature
+        return worker
+    }
+
+    func reset() async {
+        await worker?.stop()
+        worker = nil
+        signature = nil
     }
 }
 

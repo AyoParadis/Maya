@@ -10,6 +10,9 @@ struct CarouselStudioView: View {
     @State private var exporter = CarouselExportService()
     @State private var currentTime: Double = 0
     @State private var isPlaying = false
+    @State private var playbackAnchorTime = 0.0
+    @State private var playbackStartedAt: Date?
+    @State private var isAdvancingPlayback = false
     @State private var voiceoverPlayer: AVAudioPlayer?
     @State private var voiceoverCardID: UUID?
     @State private var isInspectorVisible = true
@@ -82,27 +85,44 @@ struct CarouselStudioView: View {
                 .onReceive(timer) { _ in
                     let project = workspace.selectedProject
                     guard isPlaying, project.totalDuration > 0 else { return }
-                    currentTime += 1.0 / 30.0
-                    if currentTime >= project.totalDuration {
-                        currentTime = 0
+
+                    let now = Date()
+                    if playbackStartedAt == nil {
+                        startPlaybackClock(at: currentTime, now: now)
+                    }
+
+                    let elapsed = now.timeIntervalSince(playbackStartedAt ?? now)
+                    var nextTime = playbackAnchorTime + elapsed
+                    if nextTime >= project.totalDuration {
+                        nextTime = nextTime.truncatingRemainder(dividingBy: project.totalDuration)
+                        startPlaybackClock(at: nextTime, now: now)
                         stopVoiceoverPlayback()
                     }
+
+                    isAdvancingPlayback = true
+                    currentTime = nextTime
                     project.selectCard(at: currentTime)
+                    isAdvancingPlayback = false
                     syncVoiceoverPlayback()
                 }
                 .onChange(of: isPlaying) { _, playing in
-                    playing ? syncVoiceoverPlayback() : stopVoiceoverPlayback()
+                    if playing {
+                        startPlaybackClock(at: currentTime)
+                        syncVoiceoverPlayback()
+                    } else {
+                        playbackStartedAt = nil
+                        stopVoiceoverPlayback()
+                    }
                 }
                 .onChange(of: currentTime) { _, _ in
-                    guard isPlaying else { return }
+                    guard isPlaying, !isAdvancingPlayback else { return }
+                    startPlaybackClock(at: currentTime)
                     syncVoiceoverPlayback()
                 }
                 .onChange(of: workspace.selectedProject.selectedCardID) { _, _ in
+                    guard !isPlaying, !isAdvancingPlayback else { return }
                     guard let id = workspace.selectedProject.selectedCardID else { return }
                     currentTime = workspace.selectedProject.startTime(for: id)
-                    if isPlaying {
-                        syncVoiceoverPlayback()
-                    }
                 }
                 .onChange(of: workspace.selectedProjectID) { _, _ in
                     currentTime = 0
@@ -468,6 +488,11 @@ struct CarouselStudioView: View {
         } catch {
             project.narrationMessage = error.localizedDescription
         }
+    }
+
+    private func startPlaybackClock(at time: Double, now: Date = Date()) {
+        playbackAnchorTime = time
+        playbackStartedAt = now
     }
 
     private func stopVoiceoverPlayback() {

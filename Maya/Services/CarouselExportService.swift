@@ -9,6 +9,7 @@ final class CarouselExportService {
         let value: Value
     }
 
+    private static let pixelColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
     private let stallTimeout: TimeInterval = 18
     private let renderer = CarouselRenderService()
 
@@ -226,6 +227,7 @@ final class CarouselExportService {
         let adaptorBox = UnsafeSendableBox(value: adaptor)
         let renderer = self.renderer
         let imageCache = await preloadedImages(for: cards, renderSize: renderSize)
+        let progressInterval = max(1, Int(fps) / 2)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state.continuation = continuation
@@ -284,7 +286,9 @@ final class CarouselExportService {
                         if frameIndex == 1 || frameIndex.isMultiple(of: 120) {
                             PerformanceMetrics.event(.carouselRenderFrame, detail: "frame \(frameIndex) of \(totalFrames)")
                         }
-                        progress(Double(frameIndex) / Double(max(totalFrames, 1)))
+                        if frameIndex == totalFrames || frameIndex.isMultiple(of: progressInterval) {
+                            progress(Double(frameIndex) / Double(max(totalFrames, 1)))
+                        }
 
                         if localFrame >= framesForCard {
                             cardIndex += 1
@@ -502,7 +506,7 @@ final class CarouselExportService {
             height: Int(size.height),
             bitsPerComponent: 8,
             bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            space: Self.pixelColorSpace,
             bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
         ) else {
             throw CarouselExportError.pixelBufferFailed

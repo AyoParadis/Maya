@@ -16,6 +16,9 @@ enum PerformanceOperation: String, Sendable {
     case narrationInstall = "Narration Install"
     case narrationPreview = "Narration Preview"
     case narrationGenerate = "Narration Generate"
+    case narrationCacheHit = "Narration Cache Hit"
+    case captionAlignment = "Caption Alignment"
+    case pythonWorker = "Python Worker"
     case pythonProcess = "Python Process"
 
     nonisolated var signpostName: StaticString {
@@ -34,6 +37,9 @@ enum PerformanceOperation: String, Sendable {
         case .narrationInstall: "Narration Install"
         case .narrationPreview: "Narration Preview"
         case .narrationGenerate: "Narration Generate"
+        case .narrationCacheHit: "Narration Cache Hit"
+        case .captionAlignment: "Caption Alignment"
+        case .pythonWorker: "Python Worker"
         case .pythonProcess: "Python Process"
         }
     }

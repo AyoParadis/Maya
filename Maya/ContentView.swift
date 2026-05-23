@@ -17,6 +17,8 @@ struct ContentView: View {
                 EditorView(selectedMode: $selectedMode)
             case .carousel:
                 CarouselStudioView(selectedMode: $selectedMode)
+            case .narratedImages:
+                NarratedImagesStudioView(selectedMode: $selectedMode)
             }
         }
         .frame(minWidth: 1120, minHeight: 720)
@@ -26,6 +28,7 @@ struct ContentView: View {
 enum StudioMode: String, CaseIterable, Identifiable {
     case video
     case carousel
+    case narratedImages
 
     var id: String { rawValue }
 
@@ -33,6 +36,7 @@ enum StudioMode: String, CaseIterable, Identifiable {
         switch self {
         case .video: "Video"
         case .carousel: "Carousel"
+        case .narratedImages: "Narrated Images"
         }
     }
 }
@@ -48,7 +52,7 @@ struct StudioModePicker: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .frame(width: 190)
+        .frame(width: 340)
     }
 }
 

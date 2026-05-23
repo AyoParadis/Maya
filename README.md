@@ -7,7 +7,7 @@
 
   Maya turns screen recordings and product image sets into polished videos, transparent overlays, carousel assets, and launch-ready social clips.
 
-  Current release: **Maya AI Studio 2.0.2**
+  Current release: **Maya AI Studio 2.5**
 
 </div>
 
@@ -19,6 +19,14 @@ Maya AI Studio is a native macOS creative editor for makers, designers, and app 
 
 The public app name is **Maya AI Studio** and the bundle identifier is `com.dlmapps.MayaAIStudio`. Some internal paths still use the original `Maya` name, including the source folder, Xcode project, and target.
 
+## Three Creation Modes
+
+Maya 2.5 is built around three distinct creation modes, each tuned for a different content workflow:
+
+- **Video Mode** turns screen recordings into polished product demos, social videos, transparent overlays, and device mockup exports.
+- **Carousel Mode** turns product images and screenshots into motion carousels, still image sets, narrated slide videos, and handoff bundles.
+- **Narrated Images Mode** turns plain images into vertical narrated videos with per-image scripts, local AI voiceover, voice-aligned captions, draggable caption placement, and burned-in MP4 export.
+
 ## Screenshots
 
 ### Video Mode
@@ -29,9 +37,13 @@ The public app name is **Maya AI Studio** and the bundle identifier is `com.dlma
 
 ![Maya AI Studio Carousel mode](docs/carousel-mode.png)
 
+### Narrated Images Mode
+
+![Maya AI Studio Narrated Images mode](docs/narrated-images-mode.png)
+
 ## Modes
 
-### Video
+### Video Mode
 
 Create polished product videos from `.mp4` and `.mov` recordings.
 
@@ -42,7 +54,7 @@ Create polished product videos from `.mp4` and `.mov` recordings.
 - Generate AI-assisted edit plans through the local Codex CLI.
 - Export social-ready `.mp4` files or transparent HEVC-with-alpha `.mov` overlays.
 
-### Carousel
+### Carousel Mode
 
 Create social carousel videos, still image sets, and handoff bundles from product images.
 
@@ -53,6 +65,18 @@ Create social carousel videos, still image sets, and handoff bundles from produc
 - Generate per-slide narration and align voiceover timing to the carousel timeline.
 - Export `.mp4` videos, `.png` still sets, or structured bundle folders.
 
+### Narrated Images Mode
+
+Create vertical narrated image videos from plain images.
+
+- Import images with no text baked into them.
+- Write a spoken script for each image scene.
+- Generate local AI voiceover and editable burned-in caption beats from the script.
+- Align caption timing to the generated voiceover with a local WhisperX-style forced alignment environment.
+- Generate all scripted scenes as a queue so voice generation and caption alignment can stay warm across the project.
+- Drag caption placement directly on the canvas per image.
+- Export `.mp4` videos with image motion, voiceover, and captions.
+
 ## Local AI
 
 Maya uses local-first AI workflows where possible.
@@ -60,6 +84,8 @@ Maya uses local-first AI workflows where possible.
 - **AI Director** uses your installed `codex` command to suggest trim and zoom edits for product demos.
 - **Carousel script cleanup** can use Codex to clean OCR-damaged text before narration.
 - **Voiceover generation** runs through local voice engines installed into isolated Python environments in Application Support.
+- **Narrated Images caption alignment** can run locally in its own isolated Python environment to match captions to generated voiceover timing.
+- **Narrated Images content creation** keeps local Kokoro and caption-alignment workers warm when available, and reuses generated narration for matching engine, voice, and script inputs.
 - Generated narration, previews, and downloaded voice assets stay on the Mac unless a user-controlled tool sends data elsewhere.
 
 Install and sign in to Codex before using AI Director or script cleanup:
@@ -123,6 +149,6 @@ Maya can export:
 
 ## Release
 
-Latest release: **Maya AI Studio 2.0.2**
+Latest release: **Maya AI Studio 2.5**
 
-[Download Maya AI Studio 2.0.2](https://github.com/AyoParadis/Maya/releases/tag/v2.0.2)
+[Download Maya AI Studio 2.5](https://github.com/AyoParadis/Maya/releases/tag/v2.5)

@@ -19,6 +19,8 @@ enum CarouselRenderError: LocalizedError {
 }
 
 struct CarouselRenderService {
+    private static let renderColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+
     func renderCard(
         _ card: CarouselCard,
         project: CarouselProject,
@@ -35,7 +37,7 @@ struct CarouselRenderService {
             height: Int(renderSize.height),
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            space: Self.renderColorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
             throw CarouselRenderError.cannotCreateContext
@@ -154,12 +156,11 @@ struct CarouselRenderService {
     }
 
     private func drawVignette(in rect: CGRect, context: CGContext) {
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
         let colors = [
             NSColor.black.withAlphaComponent(0.0).cgColor,
             NSColor.black.withAlphaComponent(0.38).cgColor
         ] as CFArray
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.45, 1.0]) else { return }
+        guard let gradient = CGGradient(colorsSpace: Self.renderColorSpace, colors: colors, locations: [0.45, 1.0]) else { return }
         context.drawLinearGradient(
             gradient,
             start: CGPoint(x: rect.midX, y: rect.midY),
