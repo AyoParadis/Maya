@@ -7,7 +7,7 @@
 
   Native macOS app that turns `.mp4` and `.mov` screen recordings into polished framed product videos, and turns product image sets into conversion-focused carousel videos and stills. Maya AI Studio adds AI-directed trim and zoom suggestions, local Piper voiceovers, carousel OCR, device mockups, timeline editing, social aspect ratios, and export tools for makers, designers, and app teams.
 
-  Current release: **Maya AI Studio 2.0.1**
+  Current release: **Maya AI Studio 2.0.2**
 
   ![Maya AI Studio screenshot](docs/screenshot.png)
 </div>
@@ -56,11 +56,11 @@ python3 -m venv "Application Support/Maya AI Studio/KokoroEnvironment"
 "Application Support/Maya AI Studio/KokoroEnvironment/bin/python" -m pip install --upgrade "kokoro>=0.9.4" soundfile "misaki[en]"
 ```
 
-The voiceover panel includes an engine picker, voice/reference picker, **Preview**, local storage usage, and a state-aware setup control. Missing engines show **Install selected engine**; installed engines show an installed status with **Refresh voices**; incompatible local environments show **Repair install**. Setup avoids changing the system Python installation, streams live package/download progress into the voiceover status area, and works around Homebrew's externally managed Python restrictions. After an engine installs or refreshes, Maya prepares cached previews for that engine's catalog voices so the Preview button responds quickly on later use.
+The voiceover panel includes an engine picker, voice/reference picker, **Preview**, compact local storage usage, and a state-aware setup control. Missing engines show **Install selected engine**; installed engines keep daily controls visible and tuck refresh, generated voiceover removal, and engine asset deletion into a compact **More** menu; incompatible local environments show **Repair install**. Setup avoids changing the system Python installation, streams live package/download progress into the voiceover status area, and works around Homebrew's externally managed Python restrictions. After an engine installs or refreshes, Maya prepares cached previews for that engine's catalog voices so the Preview button responds quickly on later use.
 
-Piper remains the fastest fallback and supports custom Piper voice IDs. Kokoro adds downloadable premium local voices such as `af_heart`, `af_bella`, and `am_adam`; on macOS it may also need `espeak-ng` available on the system path.
+Piper remains the fastest fallback and supports custom Piper voice IDs. Kokoro is the default AI voice engine and adds downloadable premium local voices such as `af_heart`, `af_bella`, and `am_adam`; on macOS it may also need `espeak-ng` available on the system path.
 
-On first generation for a selected non-cached Piper voice, Maya downloads the matching Piper voice files into Application Support, then reuses them for later renders. The default engine is Piper with `en_US-lessac-medium`. Generated narration and voice previews stay local; narration is cached until it is replaced, removed, or the current video/carousel project changes.
+On first generation for a selected non-cached Piper voice, Maya downloads the matching Piper voice files into Application Support, then reuses them for later renders. The default engine is Kokoro with `af_heart`. Generated narration and voice previews stay local; narration is cached until it is replaced, removed, or the current video/carousel project changes.
 
 Maya shows the selected engine's local asset size and total AI voice asset size in both Video and Carousel voiceover panels. The total includes engine Python environments, downloaded Piper voice models, and cached voice previews; it does not include generated project voiceover files. Use **Delete engine assets** to remove the selected engine's local environment, downloaded voice assets, and cached previews while keeping generated project voiceovers intact.
 
@@ -209,9 +209,15 @@ Carousel mode includes:
 
 ## Releases
 
-The latest installable Maya AI Studio release is **Maya AI Studio 2.0.1**:
+The latest installable Maya AI Studio release is **Maya AI Studio 2.0.2**:
 
-[Download Maya AI Studio 2.0.1](https://github.com/AyoParadis/Maya/releases/tag/v2.0.1)
+[Download Maya AI Studio 2.0.2](https://github.com/AyoParadis/Maya/releases/tag/v2.0.2)
+
+### Maya AI Studio 2.0.2
+
+- Tidies the shared AI Voiceover panel in Video and Carousel with a compact preview row, inline engine/storage status, and a **More** menu for secondary actions.
+- Keeps refresh, generated voiceover removal, and engine asset deletion available without showing every button at once.
+- Centralizes the default AI voice engine as Kokoro for new Video and Carousel projects.
 
 ### Maya AI Studio 2.0.1
 

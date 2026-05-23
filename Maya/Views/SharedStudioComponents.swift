@@ -237,48 +237,23 @@ struct StudioVoiceoverControls: View {
     let onInstall: () -> Void
     let onDeleteAssets: () -> Void
 
-    private var isBusy: Bool {
+    private var previewBlockingBusy: Bool {
         isGenerating || isInstalling || isCaching || isDeletingAssets
+    }
+
+    private var maintenanceBlockingBusy: Bool {
+        previewBlockingBusy || isPreviewing
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             PiperVoiceSelector(engine: $engine, voice: $voice)
 
-            HStack(spacing: 8) {
-                Button(action: onPreview) {
-                    Label(isPreviewing ? "Previewing..." : "Preview", systemImage: "play.circle")
-                        .frame(maxWidth: .infinity)
-                }
-                .disabled(isBusy || (!isPreviewing && installationStatus != .installed))
-                .help(previewButtonHelp)
+            primaryActionRow
 
-                Button(action: onRemove) {
-                    Image(systemName: "trash")
-                        .frame(width: 30)
-                }
-                .disabled(!hasNarration || isGenerating)
-                .help("Remove voiceover")
-            }
+            voiceStatusRow
 
-            Button(action: onInstall) {
-                Label(setupButtonTitle, systemImage: setupButtonIcon)
-                    .frame(maxWidth: .infinity)
-            }
-            .disabled(isInstalling || isCaching || isGenerating)
-            .help(setupButtonHelp)
-            .controlSize(installationStatus == .installed ? .small : .regular)
-
-            voiceStorageSection
-
-            if !isInstalling && !isCaching, let setupStatus {
-                CompactStatusMessage(text: setupStatus.text, icon: setupStatus.icon, tint: setupStatus.tint)
-            }
-
-            if isBusy {
-                ProgressView()
-                    .controlSize(.small)
-            }
+            installButton
 
             if let status {
                 CompactStatusMessage(text: status.text, icon: status.icon, tint: status.tint)
@@ -290,30 +265,71 @@ struct StudioVoiceoverControls: View {
         }
     }
 
-    private var voiceStorageSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "internaldrive")
-                    .foregroundStyle(.secondary)
-                Text(storageDescription)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 4)
-                if storageSummary == nil {
-                    ProgressView()
-                        .controlSize(.mini)
-                }
-            }
-
-            Button(role: .destructive, action: onDeleteAssets) {
-                Label(deleteButtonTitle, systemImage: "trash")
+    private var primaryActionRow: some View {
+        HStack(spacing: 8) {
+            Button(action: onPreview) {
+                Label(isPreviewing ? "Stop preview" : "Preview", systemImage: isPreviewing ? "stop.circle" : "play.circle")
                     .frame(maxWidth: .infinity)
             }
-            .controlSize(.small)
-            .disabled(isBusy || !selectedEngineStorage.hasDeletableAssets)
-            .help(deleteButtonHelp)
+            .disabled(previewBlockingBusy || (!isPreviewing && installationStatus != .installed))
+            .help(previewButtonHelp)
+
+            Menu {
+                Button(action: onInstall) {
+                    Label(setupButtonTitle, systemImage: setupButtonIcon)
+                }
+                .disabled(maintenanceBlockingBusy || installationStatus == .notInstalled)
+                .help(setupButtonHelp)
+
+                Divider()
+
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove generated voiceover", systemImage: "waveform.badge.minus")
+                }
+                .disabled(maintenanceBlockingBusy || !hasNarration)
+                .help(removeButtonHelp)
+
+                Button(role: .destructive, action: onDeleteAssets) {
+                    Label(deleteButtonTitle, systemImage: "trash")
+                }
+                .disabled(maintenanceBlockingBusy || !selectedEngineStorage.hasDeletableAssets)
+                .help(deleteButtonHelp)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .frame(width: 30)
+            }
+            .menuStyle(.button)
+            .help("More voiceover actions")
+        }
+    }
+
+    private var voiceStatusRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: inlineStatusIcon)
+                .foregroundStyle(inlineStatusTint)
+            Text(inlineStatusDescription)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Spacer(minLength: 4)
+            if previewBlockingBusy || storageSummary == nil {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    @ViewBuilder
+    private var installButton: some View {
+        if installationStatus != .installed {
+            Button(action: onInstall) {
+                Label(setupButtonTitle, systemImage: setupButtonIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .disabled(isInstalling || isCaching || isGenerating || isDeletingAssets)
+            .help(setupButtonHelp)
         }
     }
 
@@ -378,7 +394,59 @@ struct StudioVoiceoverControls: View {
         guard let storageSummary else {
             return "Measuring voice storage..."
         }
-        return "\(engine.displayName) \(selectedEngineStorage.formattedSize) · total \(storageSummary.formattedTotalSize)"
+        return "\(selectedEngineStorage.formattedSize) · total \(storageSummary.formattedTotalSize)"
+    }
+
+    private var inlineStatusDescription: String {
+        "\(inlineStatusText) · \(storageDescription)"
+    }
+
+    private var inlineStatusText: String {
+        if isInstalling {
+            return installationStatus == .installed ? "Refreshing \(engine.displayName)" : "Installing \(engine.displayName)"
+        }
+        if isCaching {
+            return "Preparing previews"
+        }
+        if isDeletingAssets {
+            return "Deleting \(engine.displayName) assets"
+        }
+        switch installationStatus {
+        case .notInstalled:
+            return "\(engine.displayName) not installed"
+        case .installed:
+            return "\(engine.displayName) installed"
+        case .incompatible:
+            return "\(engine.displayName) needs repair"
+        }
+    }
+
+    private var inlineStatusIcon: String {
+        if previewBlockingBusy {
+            return "arrow.triangle.2.circlepath"
+        }
+        switch installationStatus {
+        case .notInstalled:
+            return "arrow.down.circle"
+        case .installed:
+            return "checkmark.circle.fill"
+        case .incompatible:
+            return "exclamationmark.triangle"
+        }
+    }
+
+    private var inlineStatusTint: Color {
+        if previewBlockingBusy {
+            return .secondary
+        }
+        switch installationStatus {
+        case .notInstalled:
+            return .secondary
+        case .installed:
+            return .green
+        case .incompatible:
+            return .orange
+        }
     }
 
     private var deleteButtonTitle: String {
@@ -395,15 +463,11 @@ struct StudioVoiceoverControls: View {
         return "No local \(engine.displayName) voice assets to delete"
     }
 
-    private var setupStatus: (text: String, icon: String, tint: Color)? {
-        switch installationStatus {
-        case .notInstalled:
-            return nil
-        case .installed:
-            return ("\(engine.displayName) installed", "checkmark.circle.fill", .green)
-        case .incompatible:
-            return ("\(engine.displayName) install needs repair", "exclamationmark.triangle", .orange)
+    private var removeButtonHelp: String {
+        if hasNarration {
+            return "Remove the generated voiceover from this project"
         }
+        return "No generated voiceover to remove"
     }
 }
 

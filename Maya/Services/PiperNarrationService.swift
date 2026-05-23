@@ -5,6 +5,8 @@ enum NarrationEngine: String, CaseIterable, Hashable, Identifiable, Sendable {
     case piper
     case kokoro
 
+    nonisolated static let defaultEngine: NarrationEngine = .kokoro
+
     nonisolated var id: String { rawValue }
 
     nonisolated var displayName: String {

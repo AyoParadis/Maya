@@ -89,8 +89,8 @@ final class Project {
     var lastExportError: String?
 
     var narrationScript: String = ""
-    var narrationEngine: NarrationEngine = .kokoro
-    var piperVoice: String = NarrationEngine.kokoro.defaultVoice
+    var narrationEngine: NarrationEngine = .defaultEngine
+    var piperVoice: String = NarrationEngine.defaultEngine.defaultVoice
     var narrationEngineInstallationStatus: NarrationEngineInstallationStatus = .notInstalled
     var narrationAudioURL: URL?
     var narrationDisplayName: String?

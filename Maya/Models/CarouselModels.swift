@@ -295,8 +295,8 @@ final class CarouselProject: Identifiable {
         self.defaultCardDuration = 2.0
         self.showSafeZones = false
         self.narrationScript = ""
-        self.narrationEngine = .kokoro
-        self.piperVoice = NarrationEngine.kokoro.defaultVoice
+        self.narrationEngine = .defaultEngine
+        self.piperVoice = NarrationEngine.defaultEngine.defaultVoice
         self.narrationEngineInstallationStatus = .notInstalled
         self.narrationAudioURL = nil
         self.narrationDisplayName = nil
