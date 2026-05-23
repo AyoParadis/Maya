@@ -195,7 +195,7 @@ final class NarratedImageProject: Identifiable {
         self.title = title
         self.scenes = scenes
         self.selectedSceneID = scenes.first?.id
-        self.canvasAspect = .vertical9x16
+        self.canvasAspect = .square
         self.exportQuality = .draft
         self.narrationEngine = .defaultEngine
         self.voice = NarrationEngine.defaultEngine.defaultVoice

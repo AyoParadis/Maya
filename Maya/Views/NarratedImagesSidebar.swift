@@ -215,7 +215,7 @@ struct NarratedImagesSidebar: View {
             Text("Format")
                 .font(.caption.weight(.semibold))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                ForEach([CanvasAspectRatio.vertical9x16, .vertical4x5, .square, .landscape16x9]) { aspect in
+                ForEach([CanvasAspectRatio.square, .vertical9x16, .vertical4x5, .landscape16x9]) { aspect in
                     AspectRatioChip(
                         aspect: aspect,
                         isSelected: workspace.selectedProject.canvasAspect == aspect,

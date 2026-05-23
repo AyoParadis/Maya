@@ -7,7 +7,7 @@
 
   Maya turns screen recordings and product image sets into polished videos, transparent overlays, carousel assets, and launch-ready social clips.
 
-  Current release: **Maya AI Studio 2.5.1**
+  Current release: **Maya AI Studio 2.5.2**
 
 </div>
 
@@ -21,11 +21,11 @@ The public app name is **Maya AI Studio** and the bundle identifier is `com.dlma
 
 ## Three Creation Modes
 
-Maya 2.5.1 is built around three distinct creation modes, each tuned for a different content workflow:
+Maya 2.5.2 is built around three distinct creation modes, each tuned for a different content workflow:
 
 - **Video Mode** turns screen recordings into polished product demos, social videos, transparent overlays, and device mockup exports.
-- **Carousel Mode** turns product images and screenshots into motion carousels, still image sets, narrated slide videos, and handoff bundles.
-- **Narrated Images Mode** turns plain images into vertical narrated videos with per-image scripts, local AI voiceover, voice-aligned captions, draggable caption placement, and burned-in MP4 export.
+- **Carousel Mode** turns product images and screenshots into square-first motion carousels, still image sets, narrated slide videos, and handoff bundles.
+- **Narrated Images Mode** turns plain images into square-first narrated videos with per-image scripts, local AI voiceover, voice-aligned captions, draggable caption placement, and burned-in MP4 export.
 
 ## Screenshots
 
@@ -67,7 +67,7 @@ Create social carousel videos, still image sets, and handoff bundles from produc
 
 ### Narrated Images Mode
 
-Create vertical narrated image videos from plain images.
+Create square-first narrated image videos from plain images.
 
 - Import images with no text baked into them.
 - Write a spoken script for each image scene.
@@ -149,6 +149,6 @@ Maya can export:
 
 ## Release
 
-Latest release: **Maya AI Studio 2.5.1**
+Latest release: **Maya AI Studio 2.5.2**
 
-[Download Maya AI Studio 2.5.1](https://github.com/AyoParadis/Maya/releases/tag/v2.5.1)
+[Download Maya AI Studio 2.5.2](https://github.com/AyoParadis/Maya/releases/tag/v2.5.2)
