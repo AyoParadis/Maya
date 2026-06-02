@@ -544,7 +544,6 @@ struct CarouselSidebar: View {
                         await MainActor.run {
                             if let audio {
                                 NarrationService.cleanupGeneratedNarration(at: card.narrationAudioURL)
-                                card.narrationScript = CarouselSlideNarrationService.cleanedSpokenScript(from: editedScript)
                                 card.narrationScriptEdited = true
                                 card.narrationAudioURL = audio.url
                                 card.narrationAudioDuration = audio.duration

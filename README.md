@@ -7,7 +7,7 @@
 
   Maya turns screen recordings and product image sets into polished videos, transparent overlays, carousel assets, and launch-ready social clips.
 
-  Current release: **Maya AI Studio 2.5.2**
+  Current release: **Maya AI Studio 2.5.3**
 
 </div>
 
@@ -21,7 +21,7 @@ The public app name is **Maya AI Studio** and the bundle identifier is `com.dlma
 
 ## Three Creation Modes
 
-Maya 2.5.2 is built around three distinct creation modes, each tuned for a different content workflow:
+Maya 2.5.3 is built around three distinct creation modes, each tuned for a different content workflow:
 
 - **Video Mode** turns screen recordings into polished product demos, social videos, transparent overlays, and device mockup exports.
 - **Carousel Mode** turns product images and screenshots into square-first motion carousels, still image sets, narrated slide videos, and handoff bundles.
@@ -103,6 +103,7 @@ Maya supports local narration in Video and Carousel modes.
 - Voice engines are installed into separate local Python virtual environments.
 - The voiceover panel shows engine status, preview controls, storage usage, repair actions, and asset cleanup.
 - Carousel mode can generate one narration clip per slide from edited text, planned text, or detected OCR text.
+- Edited carousel slide scripts are preserved exactly when changing AI voices and regenerating audio.
 
 ## Export
 
@@ -149,6 +150,10 @@ Maya can export:
 
 ## Release
 
-Latest release: **Maya AI Studio 2.5.2**
+Latest release: **Maya AI Studio 2.5.3**
 
-[Download Maya AI Studio 2.5.2](https://github.com/AyoParadis/Maya/releases/tag/v2.5.2)
+[Download Maya AI Studio 2.5.3](https://github.com/AyoParadis/Maya/releases/tag/v2.5.3)
+
+### Maya AI Studio 2.5.3
+
+- Preserves manually edited carousel slide spoken scripts when changing AI voices or regenerating slide voiceovers.
